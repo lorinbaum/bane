@@ -1,9 +1,9 @@
-#ifndef SPIRITHELPERS_H
-#define SPIRITHELPERS_H
+#ifndef BANE_HELPERS_H
+#define BANE_HELPERS_H
 
 #include <assert.h>
 #include <stdarg.h>
-#include "spiritlib.h"
+#include "bane.h"
 
 #if __STDC_VERSION__ >= 202311L
 #  define TYPEOF typeof

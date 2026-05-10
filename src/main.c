@@ -2,7 +2,7 @@
 #include <math.h>
 #include "ft2build.h"
 #include FT_FREETYPE_H
-#include "spiritlib.h"
+#include "bane.h"
 #include "helpers.h"
 
 #define SCALE 1.25 // HACK: known scaling on testing machine
@@ -42,7 +42,9 @@ int main(void) {
         if (error) { continue; }
         if (slot->bitmap.width != 0 && slot->bitmap.rows != 0) {
             TextureRect rect;
-            TA_Status status = texture_atlas_add_get_rect(&rect, glyph_atlas, char_code, slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, slot->bitmap_left, slot->bitmap_top);
+            Image texture = (Image) { (void*) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE };
+            // NOTE: UnloadImage(texture) is not called because all it would do is free the data pointer, which isn't desired.
+            TA_Status status = texture_atlas_add_get_rect(&rect, glyph_atlas, char_code, texture, slot->bitmap_left, slot->bitmap_top);
             if (status == TA_MAX_SIZE_EXCEEDED) {
                 printf("Texture atlas max size exceeded %li\n", char_code);
                 exit(1);
@@ -51,14 +53,7 @@ int main(void) {
         char_code = FT_Get_Next_Char(face, char_code, &glyph_index);
     }
     
-    SS_Status status = texture_atlas_write_bmp(glyph_atlas, "debug/glyphatlas.bmp");
-    if (status.code != 0) {
-        status = report(1, "Glyph atlas write Error.\n%s", status.message);
-        printf("ERROR: %i\n%s", status.code, status.message);
-    }
-    
-    // bmp_status status = bmp_write("glyph_atlas.bmp", bmp, bitmap_size, bitmap_size, channels);
-    // if (status != BMP_OK) { fprintf(stderr, "bitmap write error %i", status); }
+    // ExportImage(glyph_atlas->image, "glyph_atlas.jpg");
 
     Color text_color = { 0xe3, 0x88, 0x64, 0xff };
 
