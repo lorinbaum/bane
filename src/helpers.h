@@ -5,12 +5,8 @@
 #include <stdarg.h>
 #include "bane.h"
 
-#if __STDC_VERSION__ >= 202311L
-#  define TYPEOF typeof
-#else
-// legacy GCC / Clang
-#  define TYPEOF __typeof__
-#endif
+// requires on GCC / CLANG because __typeof__ not in std=c17
+#define TYPEOF __typeof__
 
 #define ARRAY_AUTO_EXPAND(STRUCT) \
     static inline void auto_expand_##STRUCT(STRUCT *a) { \
