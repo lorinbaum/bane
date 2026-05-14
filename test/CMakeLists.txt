@@ -1,6 +1,6 @@
 add_executable(test_texture_atlas test_texture_atlas.c)
+target_compile_options(test_texture_atlas PRIVATE -Wall -Wextra -Wpedantic -Wshadow)
 target_include_directories(test_texture_atlas PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_texture_atlas PRIVATE raylib core)
 target_compile_definitions(test_texture_atlas PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-target_compile_options(test_texture_atlas PRIVATE -Wall -Wextra)
 add_test(texture_atlas test_texture_atlas)
