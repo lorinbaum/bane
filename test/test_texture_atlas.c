@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include "texture_atlas.c"
+#include "bane.h"
 
 #define RECT_MAX_W 5
 #define RECT_MAX_H 5
@@ -18,7 +18,7 @@ void add_dummy_rect(TextureAtlas *texture_atlas, uint32_t seed, unsigned int cou
         TextureRect rect;
         Image img = create_img(w, h);
         ImageClearBackground(&img, (Color) {gray, gray, gray, 255});
-        TA_Status status = texture_atlas_add_get_rect(&rect, texture_atlas, key, img, 0, 0);
+        TAStatus status = texture_atlas_add_get_rect(&rect, texture_atlas, key, img, 0, 0);
         assert(status == TA_OK);
         UnloadImage(img);
     }
@@ -28,9 +28,11 @@ void test_skyline_overlap() {
     TextureAtlas *TA = texture_atlas_create(64);
     TextureRect rect, comp_rect;
     add_dummy_rect(TA, 5, 400);
-    for (int i = 0; i < TA->rects.count; i++) {
+    for (unsigned int i = 0; i < TA->rects.count; i++) {
         rect = TA->rects.items[i];
-        for (int j = 0; j < TA->rects.count; j++) {
+        assert(rect.x >= 0 && rect.x + rect.w <= TA->size);
+        assert(rect.y >= 0 && rect.y + rect.h <= TA->size);
+        for (unsigned int j = 0; j < TA->rects.count; j++) {
             if (i == j) { continue; }
             comp_rect = TA->rects.items[j];
             assert(
@@ -45,8 +47,8 @@ void test_skyline_overlap() {
 }
 
 void test_golden_skyline() {
-    TextureAtlas *TA = texture_atlas_create(64);
-    add_dummy_rect(TA, 1, 400);
+    TextureAtlas *TA = texture_atlas_create(128);
+    add_dummy_rect(TA, 1, 600);
     const char *golden_path = TEST_DATA_DIR "/golden_skyline.png";
     const char *fail_path = TEST_DATA_DIR "/golden_skyline_FAILED.png";
     if (FileExists(golden_path)) {
@@ -64,7 +66,6 @@ void test_golden_skyline() {
             }
         }
         UnloadImage(golden);
-
     } else {
         ExportImage(TA->image, fail_path);
         printf("NO REFERENCE IMAGE FOUND AT %s. FAILED IMAGE WRITTEN TO %s\n", golden_path, fail_path);
@@ -78,7 +79,7 @@ void test_atlas_expand() {
     assert(TA->size == DEFAULT_TEXTURE_ATLAS_SIZE);
     const int s = DEFAULT_TEXTURE_ATLAS_SIZE / 2;
     TextureRect rect;
-    TA_Status status;
+    TAStatus status;
     Image img = create_img(s, s);
     for (int i = 0; i < 16; i++) {
         status = texture_atlas_add_get_rect(&rect, TA, i, img, 0, 0);
@@ -94,7 +95,7 @@ void test_atlas_expand() {
 void test_overhanging_rect() {
     TextureAtlas *TA = texture_atlas_create(8);
     TextureRect rect;
-    TA_Status status;
+    TAStatus status;
     Image img;
     
     img = create_img(8, 2);
@@ -124,10 +125,32 @@ void test_overhanging_rect() {
     texture_atlas_destroy(&TA);
 }
 
+void test_same_key() {
+    TextureAtlas *TA = texture_atlas_create(8);
+    Image img;
+    TextureRect rect;
+    TAStatus status;
+
+    img = create_img(2, 2);
+    status = texture_atlas_add_get_rect(&rect, TA, 0, img, 0, 0);
+    assert(status == TA_OK);
+    UnloadImage(img);
+
+    img = create_img(4, 4);
+    status = texture_atlas_add_get_rect(&rect, TA, 0, img, 0, 0);
+    assert(status == TA_OK);
+    assert(rect.w == 2 && rect.h == 2);
+    assert(TA->rects.count == 1);
+    UnloadImage(img);
+    
+    texture_atlas_destroy(&TA);
+}
+
 int main() {
     test_skyline_overlap();
     test_atlas_expand();
     test_overhanging_rect();
     test_golden_skyline();
+    test_same_key();
     return 0;
 }

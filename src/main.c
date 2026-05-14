@@ -3,7 +3,6 @@
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include "bane.h"
-#include "helpers.h"
 
 #define SCALE 1.25 // HACK: known scaling on testing machine
 
@@ -35,24 +34,25 @@ int main(void) {
     
     FT_ULong char_code = FT_Get_First_Char(face, &glyph_index);
     while (glyph_index != 0) {
-        glyph_index = FT_Get_Char_Index( face, char_code);
-        error = FT_Load_Glyph(face, glyph_index, load_flags );
-        if (error) { continue; }
-        error = FT_Render_Glyph(slot, render_mode);
-        if (error) { continue; }
-        if (slot->bitmap.width != 0 && slot->bitmap.rows != 0) {
-            TextureRect rect;
-            Image texture = (Image) { (void*) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE };
-            // NOTE: UnloadImage(texture) is not called because all it would do is free the data pointer, which isn't desired.
-            TA_Status status = texture_atlas_add_get_rect(&rect, glyph_atlas, char_code, texture, slot->bitmap_left, slot->bitmap_top);
-            if (status == TA_MAX_SIZE_EXCEEDED) {
-                printf("Texture atlas max size exceeded %li\n", char_code);
-                exit(1);
+        if (!FT_Load_Glyph(face, glyph_index, load_flags)) {
+            if (!FT_Render_Glyph(slot, render_mode)) {
+                if (slot->bitmap.width != 0 && slot->bitmap.rows != 0) {
+                    TextureRect rect;
+                    assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding not supported rn
+                    Image texture = (Image) { (void*) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE };
+                    // NOTE: UnloadImage(texture) is not called because all it would do is free the data pointer, which isn't desired.
+                    TAStatus status = texture_atlas_add_get_rect(&rect, glyph_atlas, char_code, texture, slot->bitmap_left, slot->bitmap_top);
+                    if (status == TA_MAX_SIZE_EXCEEDED) {
+                        printf("Texture atlas max size exceeded %li\n", char_code);
+                        exit(1);
+                    }
+                }
             }
+            
         }
         char_code = FT_Get_Next_Char(face, char_code, &glyph_index);
     }
-    
+
     // ExportImage(glyph_atlas->image, "glyph_atlas.jpg");
 
     Color text_color = { 0xe3, 0x88, 0x64, 0xff };
@@ -70,7 +70,7 @@ int main(void) {
                     pen_x = 0;
                     pen_y += 30;
                 }
-                TA_Status status = texture_atlas_draw(glyph_atlas, char_code, pen_x, pen_y, text_color);
+                TAStatus status = texture_atlas_draw(glyph_atlas, char_code, pen_x, pen_y, text_color);
                 if (status != TA_OK) {
                     char_code = FT_Get_Next_Char(face, char_code, &glyph_index);
                     continue;
