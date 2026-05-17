@@ -1,9 +1,32 @@
 #ifndef BANE_H
 #define BANE_H
 
+#include <stdlib.h>
 #include <stdint.h>
 #include "raylib.h"
 #include <assert.h>
+
+typedef struct {
+	uint32_t key; // 32 instead of 16 for easiser key generation: character keycode can be used in full
+	uint16_t x, y, w, h, origin_x, origin_y; // origin not used internally. Can be used to position texture on rendering.
+} TextureRect;
+
+#define RECTMAP_MAX_LOADFACTOR 0.6
+typedef enum { RM_OK = 0, RM_MAX_SIZE_REACHED = 1, RM_KEY_NOT_FOUND = 2 } RMStatus;
+
+// Open addressing hashmap with UINT16_MAX - 1 maximum entries
+typedef struct {
+    uint16_t max_entries;
+    uint16_t used;
+    TextureRect *entries;
+    uint32_t bucket_count;
+    uint16_t *buckets;
+} RectMap;
+
+RMStatus rectmap_create(RectMap *ret, uint16_t max_entries);
+RMStatus rectmap_get(TextureRect *ret, RectMap map, uint32_t key);
+RMStatus rectmap_put(RectMap *map, TextureRect rect);
+void rectmap_destroy(RectMap *map);
 
 // requires GCC or CLANG because __typeof__ not in std=c17
 #define TYPEOF __typeof__
@@ -51,14 +74,6 @@ void ensure_fail(const char *file, int line, const char *func, const char *expr)
 #define ensure(expr) ((expr) ? (void) (0) : ensure_fail(__FILE__, __LINE__, __func__, #expr))
 
 typedef struct {
-	uint32_t key;
-	int x, y, w, h, origin_x, origin_y; // origin not used internally. Can be used to position texture on rendering.
-} TextureRect;
-
-ARRAY_AUTO_EXPAND(TextureRect)
-ARRAY_APPEND(TextureRectArray)
-
-typedef struct {
     int x;
     int y;
 } IntVec2;
@@ -77,7 +92,7 @@ typedef struct {
     int size; // texture area is square of side length "size".
     int max_size; // hardware constrained.
     IntVec2Array skyline_anchors;
-    TextureRectArray rects;
+    RectMap rects;
     Image image; // Holds texture on CPU.
     Texture2D texture; // raylib texture on GPU. Used for drawing.
     bool image_changed;
@@ -91,7 +106,7 @@ void texture_atlas_destroy(TextureAtlas **texture_atlas);
 
 // Add a new rect to your texture atlas or returns existing rect if key exists already.
 TAStatus texture_atlas_add_get_rect(TextureRect *return_rect, TextureAtlas *texture_atlas, uint32_t key, Image texture, int origin_x, int origin_y);
-// TAStatus texture_atlas_get_rect(TextureRect *return_rect, const TextureAtlas *texture_atlas, uint32_t key);
+TAStatus texture_atlas_get_rect(TextureRect *return_rect, TextureAtlas *texture_atlas, uint32_t key);
 
 void texture_atlas_update_texture(TextureAtlas *texture_atlas);
 TAStatus texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint);

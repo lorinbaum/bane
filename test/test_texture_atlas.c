@@ -26,15 +26,19 @@ void add_dummy_rect(TextureAtlas *texture_atlas, uint32_t seed, unsigned int cou
 
 void test_skyline_overlap() {
     TextureAtlas *TA = texture_atlas_create(64);
+    TAStatus status;
     TextureRect rect, comp_rect;
-    add_dummy_rect(TA, 5, 400);
-    for (unsigned int i = 0; i < TA->rects.count; i++) {
-        rect = TA->rects.items[i];
+    unsigned int count = 400;
+    add_dummy_rect(TA, 5, count);
+    for (unsigned int i = 0; i < count; i++) {
+        status = texture_atlas_get_rect(&rect, TA, i);
+        assert(status == TA_OK);
         assert(rect.x >= 0 && rect.x + rect.w <= TA->size);
         assert(rect.y >= 0 && rect.y + rect.h <= TA->size);
-        for (unsigned int j = 0; j < TA->rects.count; j++) {
+        for (unsigned int j = 0; j < count; j++) {
             if (i == j) { continue; }
-            comp_rect = TA->rects.items[j];
+            status = texture_atlas_get_rect(&comp_rect, TA, j);
+            assert(status == TA_OK);
             assert(
                 comp_rect.x + comp_rect.w <= rect.x ||
                 comp_rect.x >= rect.x + rect.w      ||
@@ -140,10 +144,53 @@ void test_same_key() {
     status = texture_atlas_add_get_rect(&rect, TA, 0, img, 0, 0);
     assert(status == TA_OK);
     assert(rect.w == 2 && rect.h == 2);
-    assert(TA->rects.count == 1);
     UnloadImage(img);
     
     texture_atlas_destroy(&TA);
+}
+
+void test_rectmap() {
+    RectMap map;
+    RMStatus status;
+    status = rectmap_create(&map, 5);
+    TextureRect rect;
+    TextureRect rect_stored;
+    for (uint16_t i = 0; i < UINT16_MAX - 1; i++) {
+        rect = (TextureRect) { .key = i, .x = i + 5 };
+        status = rectmap_put(&map, rect);
+        assert(status == RM_OK);
+        status = rectmap_get(&rect_stored, map, i);
+        assert(status == RM_OK);
+        assert(map.used == i + 1);
+        assert(map.max_entries >= i + 1);
+        assert(rect_stored.key == rect.key && rect_stored.x == rect.x);
+    }
+
+    // recheck all values because map has been resized since last checking the first ones
+    for (uint32_t i = 0; i < 128; i++) {
+        status = rectmap_get(&rect_stored, map, i);
+        assert(status == RM_OK);
+        assert(rect_stored.key == i && rect_stored.x == i + 5);
+    }
+
+    // check size boundary
+    rect = (TextureRect) { .key = UINT16_MAX }; // UINT16_MAX here is just an unused key. can be whatever
+    status = rectmap_put(&map, rect);
+    assert(status == RM_MAX_SIZE_REACHED);
+
+    // check value update
+    uint32_t key = 500;
+    status = rectmap_get(&rect_stored, map, key);
+    assert(status == RM_OK);
+    rect = rect_stored;
+    rect.x += 200;
+    status = rectmap_put(&map, rect);
+    assert(status == RM_OK);
+    status = rectmap_get(&rect_stored, map, key);
+    assert(status == RM_OK);
+    assert(rect_stored.x == rect.x);
+
+    rectmap_destroy(&map);
 }
 
 int main() {
@@ -152,5 +199,6 @@ int main() {
     test_overhanging_rect();
     test_golden_skyline();
     test_same_key();
+    test_rectmap();
     return 0;
 }

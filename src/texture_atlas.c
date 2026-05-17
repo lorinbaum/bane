@@ -2,7 +2,108 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include "bane.h"
+
+static uint32_t murmur3_finalize(uint32_t x) {
+    x ^= x >> 16;
+    x *= 0x85EBCA6Bu;
+    x ^= x >> 13;
+    x *= 0xC2B2AE35u;
+    x ^= x >> 16;
+    return x;
+}
+
+RMStatus rectmap_create(RectMap *ret, uint16_t max_entries) {
+    if (max_entries == UINT16_MAX ) { return RM_MAX_SIZE_REACHED; }
+    uint32_t bucket_count = (uint32_t) ceil(max_entries / RECTMAP_MAX_LOADFACTOR);
+    RectMap map = (RectMap) {
+        .max_entries = max_entries,
+        .used = 0,
+        .entries = malloc(max_entries * sizeof(TextureRect)),
+        .bucket_count = bucket_count,
+        .buckets = calloc(1, bucket_count * sizeof(uint16_t)) 
+    };
+    ensure(map.entries != NULL && map.buckets != NULL);
+    *ret = map;
+    return RM_OK;
+}
+
+RMStatus rectmap_get(TextureRect *ret, RectMap map, uint32_t key) {
+    uint32_t hash = murmur3_finalize(key) % map.bucket_count;
+    uint16_t offset;
+    TextureRect entry;
+    while (true) {
+        offset = map.buckets[hash];
+        if (offset == 0) { return RM_KEY_NOT_FOUND; }
+        entry = map.entries[offset - 1];
+        if (entry.key == key) {
+            *ret = entry;
+            return RM_OK;
+        }
+        hash = (hash + 1) % map.bucket_count;
+    }
+}
+
+static void rectmap_enlarge(RectMap *map) {
+    map->max_entries = imin(UINT16_MAX - 1, map->max_entries * 2);
+    map->bucket_count = (uint32_t) ceil(map->max_entries / RECTMAP_MAX_LOADFACTOR);
+    void *temp = realloc(map->entries, map->max_entries * sizeof(TextureRect));
+    ensure(temp != NULL);
+    map->entries = temp;
+    temp = calloc(1, map->bucket_count * sizeof(uint16_t));
+    ensure(temp != NULL);
+    free(map->buckets);
+    map->buckets = temp;
+    uint32_t hash;
+    uint16_t offset;
+    for (uint16_t i = 0; i < map->used; i++) {
+        hash = murmur3_finalize(map->entries[i].key) % map->bucket_count;
+        while (true) {
+            offset = map->buckets[hash];
+            if (offset == 0) {
+                map->buckets[hash] = i + 1;
+                break;
+            }
+            hash = (hash + 1) % map->bucket_count;
+        }
+    }
+}
+
+RMStatus rectmap_put(RectMap *map, TextureRect rect) {
+    uint16_t offset;
+    TextureRect entry;
+    uint32_t hash = murmur3_finalize(rect.key) % map->bucket_count;
+    while (true) {
+        offset = map->buckets[hash];
+        if (offset == 0) { // add new value
+            if (map->used + 1 == UINT16_MAX) { return RM_MAX_SIZE_REACHED; }
+            if (map->used + 1 > map->max_entries) {
+                rectmap_enlarge(map);
+                hash = murmur3_finalize(rect.key) % map->bucket_count;
+                continue;
+            }
+            map->buckets[hash] = map->used + 1; // stores one higher because offest = 0 is reserved for unused fields
+            map->entries[map->used] = rect;
+            map->used++;
+            return RM_OK;
+        } else { // replace value
+            entry = map->entries[offset - 1];
+            if (entry.key == rect.key) {
+                map->entries[offset - 1] = rect;
+                return RM_OK;
+            }
+        }
+        hash = (hash + 1) % map->bucket_count;
+    }
+}
+
+void rectmap_destroy(RectMap *map) {
+    free(map->buckets);
+    map->buckets = NULL;
+    free(map->entries);
+    map->entries = NULL;
+}
 
 TextureAtlas *texture_atlas_create(int max_size) {
     assert(max_size > 0);
@@ -16,8 +117,8 @@ TextureAtlas *texture_atlas_create(int max_size) {
     append_IntVec2Array(&texture_atlas->skyline_anchors, (IntVec2) {0, 0});
     append_IntVec2Array(&texture_atlas->skyline_anchors, (IntVec2) {texture_atlas->size, 0}); // sentinel
     
-    texture_atlas->rects = (TextureRectArray) {malloc(sizeof(TextureRect) * DEFAULT_TEXTURE_RECTS_CAP), 0, DEFAULT_TEXTURE_RECTS_CAP};
-    ensure(texture_atlas->rects.items != NULL);
+    RMStatus status = rectmap_create(&texture_atlas->rects, 256);
+    ensure(status == RM_OK);
     
     texture_atlas->image = (Image) {
         calloc(1, texture_atlas->size * texture_atlas->size),
@@ -37,21 +138,17 @@ TextureAtlas *texture_atlas_create(int max_size) {
 void texture_atlas_destroy(TextureAtlas **texture_atlas) {
     if (*texture_atlas == NULL) { return; }
     free((*texture_atlas)->skyline_anchors.items);
-    free((*texture_atlas)->rects.items);
+    rectmap_destroy(&(*texture_atlas)->rects);
     UnloadTexture((*texture_atlas)->texture);
     UnloadImage((*texture_atlas)->image);
     free((*texture_atlas));
     *texture_atlas = NULL;
 }
 
-TAStatus texture_atlas_get_rect(TextureRect *return_rect, const TextureAtlas *texture_atlas, uint32_t key) {
-    for (unsigned int i = 0; i < texture_atlas->rects.count; i++) {
-        if (texture_atlas->rects.items[i].key == key) {
-            *return_rect = texture_atlas->rects.items[i];
-            return TA_OK;
-        }
-    }
-    return TA_RECT_NOT_FOUND;
+TAStatus texture_atlas_get_rect(TextureRect *return_rect, TextureAtlas *texture_atlas, uint32_t key) {
+    RMStatus status = rectmap_get(return_rect, texture_atlas->rects, key);
+    if (status == RM_OK) { return TA_OK; }
+    else { return TA_RECT_NOT_FOUND; }
 }
 
 typedef struct { int x, y, index; } Anchor;
@@ -128,7 +225,7 @@ TAStatus texture_atlas_add_get_rect(TextureRect *return_rect, TextureAtlas *text
                 if (status != TA_OK) { return status; }
             } else {
                 rect = (TextureRect) {key, best.x, best.y, image.width, image.height, origin_x, origin_y};
-                append_TextureRectArray(&texture_atlas->rects, rect);
+                rectmap_put(&texture_atlas->rects, rect);
                 update_anchors(anchors, best, image.width, image.height);
                 if (old_size < texture_atlas->size) {
                     ImageResizeCanvas(&texture_atlas->image, texture_atlas->size, texture_atlas->size, 0, 0, (Color) {0, 0, 0, 0});
