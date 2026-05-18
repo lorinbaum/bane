@@ -3,6 +3,7 @@
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include "bane.h"
+#include "firasans_regular.c"
 
 #define SCALE 1.25 // HACK: known scaling on testing machine
 
@@ -12,15 +13,14 @@ int main(void) {
     FT_Error error;
     FT_Library  library;
     error = FT_Init_FreeType( &library );
-    if ( error ) { printf("... an error occurred during library initialization ..."); }
+    assert(!error);
     
     FT_Face face;
-    error = FT_New_Face(library, "assets/FiraSans-Regular.ttf", 0, &face);
-    if (error == FT_Err_Unknown_File_Format) { printf("Unknown file format."); }
-    else if (error) { printf("Other error occured"); }
+    error = FT_New_Memory_Face(library, (FT_Byte *) assets_FiraSans_Regular_ttf, assets_FiraSans_Regular_ttf_len, 0, &face);
+    assert(!error);
     
     error = FT_Set_Char_Size(face, 0, 20*64*SCALE, 72, 72 );
-    if (error) { printf("FreeType error setting char size"); }
+    assert(!error);
 
     FT_GlyphSlot slot = face->glyph;
     FT_UInt glyph_index;
