@@ -114,8 +114,8 @@ TextureAtlas *texture_atlas_create(int max_size) {
     
     texture_atlas->skyline_anchors = (IntVec2Array) {malloc(sizeof(IntVec2) * DEFAULT_SKYLINE_ANCHOR_CAP), 0, DEFAULT_SKYLINE_ANCHOR_CAP};
     ensure(texture_atlas->skyline_anchors.items != NULL);
-    append_IntVec2Array(&texture_atlas->skyline_anchors, (IntVec2) {0, 0});
-    append_IntVec2Array(&texture_atlas->skyline_anchors, (IntVec2) {texture_atlas->size, 0}); // sentinel
+    append_IntVec2(&texture_atlas->skyline_anchors, (IntVec2) {0, 0});
+    append_IntVec2(&texture_atlas->skyline_anchors, (IntVec2) {texture_atlas->size, 0}); // sentinel
     
     RMStatus status = rectmap_create(&texture_atlas->rects, 256);
     ensure(status == RM_OK);
@@ -178,21 +178,21 @@ static void update_anchors(IntVec2Array *anchors, Anchor best, int w, int h) {
     int latest_y;
     unsigned int next_i = best.index;
     if (anchors->items[best.index].y != best.y+h) { // anchors to the left and at same y would always be preferred anyway
-        insert_IntVec2Array(anchors, best.index, (IntVec2) {best.x, best.y+h});
+        insert_IntVec2(anchors, best.index, (IntVec2) {best.x, best.y+h});
         next_i++;
     }
     do {
         latest_y = anchors->items[next_i].y;
-        delete_IntVec2Array(anchors, next_i);
+        delete_IntVec2(anchors, next_i);
     } while (next_i + 1 < anchors->count && anchors->items[best.index+1].x < best.x + w); // next_i + 1 because last anchor is sentinel and mustn't be deleted.
-    if (anchors->items[best.index+1].x > best.x + w) { insert_IntVec2Array(anchors, next_i, (IntVec2) {best.x + w, latest_y}); }
+    if (anchors->items[best.index+1].x > best.x + w) { insert_IntVec2(anchors, next_i, (IntVec2) {best.x + w, latest_y}); }
 }
 
 static TAStatus texture_atlas_resize(int *size, int max_size, IntVec2Array *anchors) {
     if (*size == max_size) { return TA_MAX_SIZE_EXCEEDED; }
     *size = imin(max_size, *size * 2);
     // update or add new old sentinel
-    if (anchors->items[anchors->count-2].y != 0) { append_IntVec2Array(anchors, (IntVec2) {*size, 0}); }
+    if (anchors->items[anchors->count-2].y != 0) { append_IntVec2(anchors, (IntVec2) {*size, 0}); }
     else { anchors->items[anchors->count - 1].x = *size; }
     return TA_OK;
 }

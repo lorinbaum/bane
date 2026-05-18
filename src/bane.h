@@ -31,37 +31,37 @@ void rectmap_destroy(RectMap *map);
 // requires GCC or CLANG because __typeof__ not in std=c17
 #define TYPEOF __typeof__
 
-#define ARRAY_AUTO_EXPAND(STRUCT) \
+#define ARRAY_DECLARE(STRUCT) \
     typedef struct {\
         STRUCT *items; \
         unsigned int count, cap; \
     } STRUCT##Array; \
-    static inline void auto_expand_##STRUCT##Array(STRUCT##Array *a) { \
+    void expand_##STRUCT##Array(STRUCT##Array *a); \
+    void append_##STRUCT(STRUCT##Array *a, TYPEOF(*a->items) item); \
+    void delete_##STRUCT(STRUCT##Array *a, unsigned int index); \
+    void insert_##STRUCT(STRUCT##Array *a, unsigned int index, TYPEOF(*a->items) item);
+
+#define ARRAY_DEFINE(STRUCT) \
+    void expand_##STRUCT##Array(STRUCT##Array *a) { \
         if (a->count >= a->cap) { \
             a->cap = a->cap > 0 ? a->cap * 2 : 16; \
             a->items = realloc(a->items, sizeof(a->items[0]) * a->cap); \
             ensure(a->items != NULL); \
         }\
-    }
-
-#define ARRAY_APPEND(STRUCT) \
-    static inline void append_##STRUCT(STRUCT *a, TYPEOF(*a->items) item) { \
-        auto_expand_##STRUCT(a); \
+    } \
+    void append_##STRUCT(STRUCT##Array *a, TYPEOF(*a->items) item) { \
+        expand_##STRUCT##Array(a); \
         a->items[a->count] = item; \
         a->count++; \
-    }
-    
-#define ARRAY_DELETE(STRUCT) \
-    static inline void delete_##STRUCT(STRUCT *a, unsigned int index) { \
+    } \
+    void delete_##STRUCT(STRUCT##Array *a, unsigned int index) { \
         assert(index < a->count); \
         for (unsigned int i = index; i + 1 < a->count; i++) { a->items[i] = a->items[i+1]; } \
         a->count--; \
-    }
-
-#define ARRAY_INSERT(STRUCT) \
-    static inline void insert_##STRUCT(STRUCT *a, unsigned int index, TYPEOF(*a->items) item) { \
+    } \
+    void insert_##STRUCT(STRUCT##Array *a, unsigned int index, TYPEOF(*a->items) item) { \
         assert(index <= a->count); \
-        auto_expand_##STRUCT(a); \
+        expand_##STRUCT##Array(a); \
         for (unsigned i = a->count; i > index; i--) { a->items[i] = a->items[i-1]; } \
         a->items[index] = item; \
         a->count++; \
@@ -78,10 +78,7 @@ typedef struct {
     int y;
 } IntVec2;
 
-ARRAY_AUTO_EXPAND(IntVec2)
-ARRAY_APPEND(IntVec2Array)
-ARRAY_DELETE(IntVec2Array)
-ARRAY_INSERT(IntVec2Array)
+ARRAY_DECLARE(IntVec2)
 
 #define DEFAULT_TEXTURE_ATLAS_SIZE 64
 #define DEFAULT_SKYLINE_ANCHOR_CAP 32
