@@ -112,8 +112,7 @@ TextureAtlas *texture_atlas_create(int max_size) {
     texture_atlas->size = imin(DEFAULT_TEXTURE_ATLAS_SIZE, max_size);
     texture_atlas->max_size = max_size;
     
-    texture_atlas->skyline_anchors = (IntVec2Array) {malloc(sizeof(IntVec2) * DEFAULT_SKYLINE_ANCHOR_CAP), 0, DEFAULT_SKYLINE_ANCHOR_CAP};
-    ensure(texture_atlas->skyline_anchors.items != NULL);
+    texture_atlas->skyline_anchors = create_IntVec2Array(DEFAULT_SKYLINE_ANCHOR_CAP);
     append_IntVec2(&texture_atlas->skyline_anchors, (IntVec2) {0, 0});
     append_IntVec2(&texture_atlas->skyline_anchors, (IntVec2) {texture_atlas->size, 0}); // sentinel
     
@@ -137,7 +136,7 @@ TextureAtlas *texture_atlas_create(int max_size) {
 
 void texture_atlas_destroy(TextureAtlas **texture_atlas) {
     if (*texture_atlas == NULL) { return; }
-    free((*texture_atlas)->skyline_anchors.items);
+    destroy_IntVec2Array(&(*texture_atlas)->skyline_anchors);
     rectmap_destroy(&(*texture_atlas)->rects);
     UnloadTexture((*texture_atlas)->texture);
     UnloadImage((*texture_atlas)->image);

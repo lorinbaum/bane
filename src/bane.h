@@ -36,12 +36,25 @@ void rectmap_destroy(RectMap *map);
         STRUCT *items; \
         unsigned int count, cap; \
     } STRUCT##Array; \
+    STRUCT##Array create_##STRUCT##Array(uint cap); \
+    void destroy_##STRUCT##Array(STRUCT##Array *a); \
     void expand_##STRUCT##Array(STRUCT##Array *a); \
     void append_##STRUCT(STRUCT##Array *a, TYPEOF(*a->items) item); \
     void delete_##STRUCT(STRUCT##Array *a, unsigned int index); \
     void insert_##STRUCT(STRUCT##Array *a, unsigned int index, TYPEOF(*a->items) item);
 
 #define ARRAY_DEFINE(STRUCT) \
+    STRUCT##Array create_##STRUCT##Array(uint cap) { \
+        STRUCT##Array ret = (STRUCT##Array) {malloc(cap * sizeof(STRUCT)), 0, cap}; \
+        ensure(ret.items != NULL); \
+        return ret; \
+    } \
+    void destroy_##STRUCT##Array(STRUCT##Array *a) { \
+        free(a->items); \
+        a->items = NULL; \
+        a->count = 0; \
+        a->cap = 0; \
+    } \
     void expand_##STRUCT##Array(STRUCT##Array *a) { \
         if (a->count >= a->cap) { \
             a->cap = a->cap > 0 ? a->cap * 2 : 16; \
