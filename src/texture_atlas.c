@@ -210,34 +210,39 @@ TAStatus texture_atlas_add_get_rect(TextureRect *return_rect, TextureAtlas *text
     TextureRect rect;
     TAStatus status = texture_atlas_get_rect(&rect, texture_atlas, key);
     if (status == TA_RECT_NOT_FOUND) {
-        Anchor best;
-        IntVec2Array *anchors = &texture_atlas->skyline_anchors; // shorthand
-        assert(anchors->count >= 2);
-        assert(texture_atlas->max_size >= image.width && image.width > 0 && texture_atlas->max_size >= image.height && image.height > 0);
-        bool found;
-        int old_size = texture_atlas->size;
-        while (true) { // retry after resize
-            assert(texture_atlas->size <= texture_atlas->max_size);
-            found = find_best_anchor(anchors, &best, texture_atlas->size, texture_atlas->max_size, image.width);
-            if (!found || best.y+image.height > texture_atlas->size) {
-                status = texture_atlas_resize(&texture_atlas->size, texture_atlas->max_size, anchors);
-                if (status != TA_OK) { return status; }
-            } else {
-                rect = (TextureRect) {key, best.x, best.y, image.width, image.height, origin_x, origin_y};
-                rectmap_put(&texture_atlas->rects, rect);
-                update_anchors(anchors, best, image.width, image.height);
-                if (old_size < texture_atlas->size) {
-                    ImageResizeCanvas(&texture_atlas->image, texture_atlas->size, texture_atlas->size, 0, 0, (Color) {0, 0, 0, 0});
+        if (image.width == 0 || image.height == 0) {
+            rect = (TextureRect) {key, 0, 0, 0, 0, origin_x, origin_y};
+            rectmap_put(&texture_atlas->rects, rect);
+        } else {
+            Anchor best;
+            IntVec2Array *anchors = &texture_atlas->skyline_anchors; // shorthand
+            assert(anchors->count >= 2);
+            assert(texture_atlas->max_size >= image.width && image.width > 0 && texture_atlas->max_size >= image.height && image.height > 0);
+            bool found;
+            int old_size = texture_atlas->size;
+            while (true) { // retry after resize
+                assert(texture_atlas->size <= texture_atlas->max_size);
+                found = find_best_anchor(anchors, &best, texture_atlas->size, texture_atlas->max_size, image.width);
+                if (!found || best.y+image.height > texture_atlas->size) {
+                    status = texture_atlas_resize(&texture_atlas->size, texture_atlas->max_size, anchors);
+                    if (status != TA_OK) { return status; }
+                } else {
+                    rect = (TextureRect) {key, best.x, best.y, image.width, image.height, origin_x, origin_y};
+                    rectmap_put(&texture_atlas->rects, rect);
+                    update_anchors(anchors, best, image.width, image.height);
+                    if (old_size < texture_atlas->size) {
+                        ImageResizeCanvas(&texture_atlas->image, texture_atlas->size, texture_atlas->size, 0, 0, (Color) {0, 0, 0, 0});
+                    }
+                    ImageDraw(&texture_atlas->image, image,
+                        (Rectangle) {0, 0, image.width, image.height}, (Rectangle) {rect.x, rect.y, rect.w, rect.h},
+                        (Color) {255, 255, 255, 255}
+                    );
+                    texture_atlas->image_changed = true;
+                    break;
                 }
-                ImageDraw(&texture_atlas->image, image,
-                    (Rectangle) {0, 0, image.width, image.height}, (Rectangle) {rect.x, rect.y, rect.w, rect.h},
-                    (Color) {255, 255, 255, 255}
-                );
-                texture_atlas->image_changed = true;
-                status = TA_OK;
-                break;
-            }
+            }  
         }
+        status = TA_OK;
     }
     *return_rect = rect;
     return status;
@@ -262,6 +267,7 @@ TAStatus texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, in
     TextureRect rect;
     TAStatus status = texture_atlas_get_rect(&rect, texture_atlas, key);
     if (status == TA_RECT_NOT_FOUND) { return status; }
+    if (rect.w == 0 || rect.h == 0) { return TA_OK; } // nothing to draw
     Rectangle src = { rect.x, rect.y, rect.w, rect.h };
     Rectangle dest = { x + rect.origin_x, y - rect.origin_y, rect.w, rect.h };
     if (texture_atlas->image_changed) {
