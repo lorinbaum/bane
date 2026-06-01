@@ -1,6 +1,7 @@
 add_library(core
     helpers.c
     texture_atlas.c
+    utf8.c
 )
 
 target_compile_options(core PRIVATE -Wall -Wextra -Wpedantic -Wshadow)

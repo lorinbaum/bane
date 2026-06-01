@@ -121,4 +121,71 @@ TAStatus texture_atlas_get_rect(TextureRect *return_rect, TextureAtlas *texture_
 void texture_atlas_update_texture(TextureAtlas *texture_atlas);
 TAStatus texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint);
 
+// UTF8
+
+typedef enum { UTF8_OK = 0, UTF8_TOO_SHORT = 1, UTF8_INVALID = 2, UTF8_INVALID_ARGUMENT = 3} UTF8Status;
+
+/**
+ * @brief Decode UTF8 string into unicode codepoints.
+ * @param str UTF8 encoded string to decode.
+ * @param in_len Maximum bytes of str to consider.
+* @param strict Behavior on invalid encoding: 
+ *     true: return UTF8_INVALID immediately.
+ *     false: decode as U+FFFD (Replacement Character) and continue.
+ * @param out_cap Maximum number codepoints to decode.
+ * @param codepoints Decoded codepoints. Written on the go until error or done.
+ * @param out_len Number of codepoints decoded. Written on the go until error or done.
+ * @retval UTF8_OK Success.
+ * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
+ * @retval UTF8_TOO_SHORT in_len cuts input mid-utf8-sequence (takes priority over UTF8_INVALID if both apply).
+ * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
+ */
+UTF8Status utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len);
+
+/**
+ * @brief Encode unicode codepoints as UTF8 string.
+ * @param codepoints Codepoints to encode.
+ * @param in_len Maximum number of codepoints to encode
+ * @param strict Behavior on invalid codepoints: 
+ *     true: return UTF8_INVALID immediately.
+ *     false: encode as U+FFFD (Replacement Character) and continue.
+ * @param out_cap Maximum number bytes to write. If reached while decoding, stops without error
+ * @param str Encoded string. Written on the go until error or done.
+ * @param out_len Number of bytes encoded. Written on the go until error or done.
+ * @retval UTF8_OK Success.
+ * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
+ * @retval UTF8_TOO_SHORT out_cap cuts output mid-utf8-sequence (takes priority over UTF8_INVALID if both apply).
+ * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
+ */
+UTF8Status utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len);
+
+/**
+ * @brief Validate codepoints and count number of bytes necessary to encode them.
+ * @param codepoints Codepoints to encode.
+ * @param in_len Maximum number of codepoints to encode.
+ * @param strict Behavior on invalid codepoints: 
+ *     true: return UTF8_INVALID immediately.
+ *     false: encode as U+FFFD (Replacement Character) and continue.
+ * @param out_len Number of bytes needed. Written on the go until error or done.
+ * @retval UTF8_OK Success.
+ * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
+ * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
+ */
+UTF8Status utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool strict, size_t *out_len);
+
+/**
+ * @brief Count number of codepoints encoded in string. Does not validate input.
+ * @param str UTF8 encoded string to decode.
+ * @param in_len Maximum number of bytes to decode.
+ * @param out_len Number of codepoints in str. Written on the go until error or done.
+ * @param processed_bytes Number of input bytes processed. If UTF8_TOO_SHORT, this does not include incomplete sequences.
+ * @retval UTF8_OK Success.
+ * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
+ * @retval UTF8_TOO_SHORT in_len cuts input mid-utf8-sequence
+ */
+UTF8Status utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes);
+
+#define INVALID_CODEPOINT UINT32_C(0xFFFD)
+#define BETWEEN(c, l, u) ((c) >= (l) && (c) <= (u))
+
 #endif
