@@ -45,7 +45,7 @@ void rectmap_destroy(RectMap *map);
 
 #define ARRAY_DEFINE(STRUCT) \
     STRUCT##Array create_##STRUCT##Array(uint cap) { \
-        STRUCT##Array ret = (STRUCT##Array) {malloc(cap * sizeof(STRUCT)), 0, cap}; \
+        STRUCT##Array ret = {malloc(cap * sizeof(STRUCT)), 0, cap}; \
         ensure(ret.items != NULL); \
         return ret; \
     } \

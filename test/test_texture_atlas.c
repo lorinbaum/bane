@@ -6,7 +6,7 @@
 #define RECT_MAX_H 5
 
 Image create_img(int w, int h) {
-    Image img = (Image) {malloc(w*h), w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
+    Image img = {malloc(w*h), w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
     ensure(img.data != NULL);
     return img;
 }
