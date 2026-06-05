@@ -80,8 +80,36 @@ void rectmap_destroy(RectMap *map);
         a->count++; \
     }
 
-static inline int imin(int a, int b) { return a > b ? b : a; }
-static inline int imax(int a, int b) { return a > b ? a : b; }
+// Indirection required to use __COUNTER__ and similar as argument.
+// Inspiration from linux kernel include/linux/minmax.h
+#define ___JOIN(a, b) a##b
+#define __JOIN(a, b) ___JOIN(a, b)
+#define __UNIQUE __JOIN(_unique_, __COUNTER__)
+
+#define __min(x, y, x0, y0) __extension__({ \
+    __auto_type x0 = (x); \
+    __auto_type y0 = (y); \
+    x0 > y0 ? y0 : x0; \
+})
+
+#define min(x, y) __min(x, y, __UNIQUE, __UNIQUE)
+
+#define __max(x, y, x0, y0) __extension__({ \
+    __auto_type x0 = (x); \
+    __auto_type y0 = (y); \
+    x0 > y0 ? x0 : y0; \
+})
+
+#define max(x, y) __max(x, y, __UNIQUE, __UNIQUE)
+
+#define __between(x, lower, upper, x0, lower0, upper0) __extension__({ \
+    __auto_type x0 = (x); \
+    __auto_type lower0 = (lower); \
+    __auto_type upper0 = (upper); \
+    lower0 <= x0 && x0 <= upper0; \
+})
+
+#define between(x, lower, upper) __between(x, lower, upper, __UNIQUE, __UNIQUE, __UNIQUE)
 
 void ensure_fail(const char *file, int line, const char *func, const char *expr);
 #define ensure(expr) ((expr) ? (void) (0) : ensure_fail(__FILE__, __LINE__, __func__, #expr))
@@ -186,6 +214,5 @@ UTF8Status utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool st
 UTF8Status utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes);
 
 #define INVALID_CODEPOINT UINT32_C(0xFFFD)
-#define BETWEEN(c, l, u) ((c) >= (l) && (c) <= (u))
 
 #endif

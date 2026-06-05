@@ -46,7 +46,7 @@ RMStatus rectmap_get(TextureRect *ret, RectMap map, uint32_t key) {
 }
 
 static void rectmap_enlarge(RectMap *map) {
-    map->max_entries = imin(UINT16_MAX - 1, map->max_entries * 2);
+    map->max_entries = min(UINT16_MAX - 1, map->max_entries * 2);
     map->bucket_count = (uint32_t) ceil(map->max_entries / RECTMAP_MAX_LOADFACTOR);
     void *temp = realloc(map->entries, map->max_entries * sizeof(TextureRect));
     ensure(temp != NULL);
@@ -109,7 +109,7 @@ TextureAtlas *texture_atlas_create(int max_size) {
     assert(max_size > 0);
     TextureAtlas *texture_atlas = calloc(1, sizeof(TextureAtlas));
     ensure(texture_atlas != NULL);
-    texture_atlas->size = imin(DEFAULT_TEXTURE_ATLAS_SIZE, max_size);
+    texture_atlas->size = min(DEFAULT_TEXTURE_ATLAS_SIZE, max_size);
     texture_atlas->max_size = max_size;
     
     texture_atlas->skyline_anchors = create_IntVec2Array(DEFAULT_SKYLINE_ANCHOR_CAP);
@@ -189,7 +189,7 @@ static void update_anchors(IntVec2Array *anchors, Anchor best, int w, int h) {
 
 static TAStatus texture_atlas_resize(int *size, int max_size, IntVec2Array *anchors) {
     if (*size == max_size) { return TA_MAX_SIZE_EXCEEDED; }
-    *size = imin(max_size, *size * 2);
+    *size = min(max_size, *size * 2);
     // update or add new old sentinel
     if (anchors->items[anchors->count-2].y != 0) { append_IntVec2(anchors, (IntVec2) {*size, 0}); }
     else { anchors->items[anchors->count - 1].x = *size; }

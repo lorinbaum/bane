@@ -16,18 +16,18 @@ static const struct {
 };
 
 static bool is_valid_utf8_codepoint(uint32_t codepoint) {
-	return !BETWEEN(codepoint, 0xD800, 0xDFFF) && // U+D800 through U+DFFF are reserved for UTF-16 (see RFC-3629)
+	return !between(codepoint, UINT32_C(0xD800), UINT32_C(0xDFFF)) && // U+D800 through U+DFFF are reserved for UTF-16 (see RFC-3629)
 	codepoint <= 0x10FFFF; // max utf-8 codepoint
 }
 
-static bool is_continuation_byte(unsigned char c) { return BETWEEN(c, 0x80, 0xBF); }
+static bool is_continuation_byte(unsigned char c) { return between(c, 0x80, 0xBF); }
 
 typedef enum { SEQ_OK = 0, SEQ_TRUNCATED = 1, SEQ_INVALID = 2 } SEQStatus;
 
 static SEQStatus utf8_sequence_length(const unsigned char *str, size_t max_len, uint_least8_t *sequence_len) {
 	*sequence_len = 0;
 	for (uint_least8_t off = 0; off < 4; off++) {
-		if (BETWEEN(str[0], lut[off].lower, lut[off].upper)) {
+		if (between(str[0], lut[off].lower, lut[off].upper)) {
 			*sequence_len = off + 1;
 			break;
 		}
@@ -49,7 +49,7 @@ static SEQStatus utf8_sequence_length(const unsigned char *str, size_t max_len, 
 static bool utf8_codepoint_bytes(uint32_t codepoint, uint_least8_t *len) {
 	if (is_valid_utf8_codepoint(codepoint)) {
 		for (uint_least8_t off = 0; off < 4; off++) {
-			if (BETWEEN(codepoint, lut[off].mincp, lut[off].maxcp)) {
+			if (between(codepoint, lut[off].mincp, lut[off].maxcp)) {
 				*len = off + 1;
 				return true;
 			}
@@ -64,8 +64,7 @@ UTF8Status utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_l
 	*out_len = 0;
 	uint_least8_t sequence_len;
 	for (*processed_bytes = 0; *processed_bytes < in_len; *processed_bytes += sequence_len, (*out_len)++) {
-		uint_least8_t max_len = in_len - *processed_bytes > 4 ? 4 : in_len - *processed_bytes;
-		SEQStatus seq_status = utf8_sequence_length((const unsigned char *) str + *processed_bytes, max_len, &sequence_len);
+		SEQStatus seq_status = utf8_sequence_length((const unsigned char *) str + *processed_bytes, min(4U, in_len - *processed_bytes), &sequence_len);
 		// invalid sequences aren't handled here because the validation in utf8_sequence_length is incomplete. decoded codepoints could be invalid.
 		if (seq_status == SEQ_TRUNCATED) { return UTF8_TOO_SHORT; }
 	}
@@ -78,10 +77,9 @@ UTF8Status utf8_decode(const char *str, size_t in_len, bool strict, size_t out_c
 	UTF8Status status = UTF8_OK;
 	uint_least8_t sequence_len;
 	for (size_t i = 0; i < in_len && *out_len < out_cap; i += sequence_len, (*out_len)++) {
-		uint_least8_t max_len = in_len - i > 4 ? 4 : in_len - i;
 		uint32_t *codepoint = codepoints + *out_len;
 		const unsigned char *ustr = (const unsigned char *) (str + i);
-		SEQStatus seq_status = utf8_sequence_length(ustr, max_len, &sequence_len);
+		SEQStatus seq_status = utf8_sequence_length(ustr, min(4U, in_len - i), &sequence_len);
 		if (seq_status == SEQ_OK) {
 			*codepoint = ustr[0] - lut[sequence_len - 1].lower;
 			for (uint_least8_t j = 1; j < sequence_len; j++) { *codepoint = (*codepoint << 6) | (ustr[j] & 0x3F); }
@@ -118,9 +116,8 @@ UTF8Status utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, s
 	uint_least8_t sequence_len;
 	for (size_t i = 0; i < in_len; i++, *out_len += sequence_len) {
 		uint32_t codepoint = codepoints[i];
-		uint_least8_t max_len = out_cap - 1 - *out_len > 4 ? 4 : out_cap - 1 - *out_len;
 		bool valid = utf8_codepoint_bytes(codepoint, &sequence_len);
-		if (sequence_len > max_len) {
+		if (sequence_len > min(4U, out_cap - 1 - *out_len)) {
 			status = UTF8_TOO_SHORT;
 			goto terminate;
 		}
