@@ -8,7 +8,8 @@
 
 typedef struct {
 	uint32_t key; // 32 instead of 16 for easiser key generation: character keycode can be used in full
-	uint16_t x, y, w, h, origin_x, origin_y; // origin not used internally. Can be used to position texture on rendering.
+	uint16_t x, y, w, h;
+    int16_t origin_x, origin_y; // Used to offset position of rendered texture.
 } TextureRect;
 
 #define RECTMAP_MAX_LOADFACTOR 0.6
