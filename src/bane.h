@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "raylib.h"
 #include <assert.h>
+#include <string.h>
 
 typedef struct {
 	uint32_t key; // 32 instead of 16 for easiser key generation: character keycode can be used in full
@@ -79,6 +80,11 @@ void rectmap_destroy(RectMap *map);
         for (unsigned i = a->count; i > index; i--) { a->items[i] = a->items[i-1]; } \
         a->items[index] = item; \
         a->count++; \
+    }\
+    void copy_##STRUCT(STRUCT##Array *dest, STRUCT##Array *src) { \
+        dest->count = src->count; \
+        expand_##STRUCT##Array(dest); \
+        memcpy(dest->items, src->items, sizeof(src->items[0]) * src->count); \
     }
 
 // Indirection required to use __COUNTER__ and similar as argument.
