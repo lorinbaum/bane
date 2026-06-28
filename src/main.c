@@ -12,11 +12,30 @@
 ARRAY_DECLARE(int_least32_t)
 ARRAY_DEFINE(int_least32_t)
 
+typedef enum { END_WRAP = 0, END_LF = 1, END_INPUT = 2 } LineEnd;
+
 typedef struct {
-    int_least32_tArray xs; // x positions between characters, excluding before first character, including after last one.
-    bool wrap;
-    size_t codepoint_count;
+    int_least32_tArray xs; // possible cursor x positions in line, excluding before first character, which would always be 0
+    LineEnd end;
+    size_t count; // codepoints in line
+    size_t offset; // codepoint offset at start of line
+    int_least32_t y; // baseline, not bounding box
 } Line;
+
+Line line_create() { return (Line) { .xs = create_int_least32_tArray(32) }; }
+void line_destroy(Line line) { destroy_int_least32_tArray(&line.xs);}
+bool line_contains_pos(Line line, size_t offset, bool pre_wrap) {
+    size_t line_end = line.offset + line.count;
+    return (offset >= line.offset &&
+        (offset < line_end ||
+            (offset == line_end && line.end != END_LF && (pre_wrap || line.end == END_INPUT))
+        )
+    );
+}
+int_least32_t line_top(Line line, FT_Face face) { return line.y - ((face->size->metrics.ascender + 32) >> 6); }
+void print_line(Line line) {
+    printf("Line(offset=%lu, count=%lu, baseline=%i, xs.count=%u)\n", line.offset, line.count, line.y, line.xs.count);
+}
 
 typedef struct {
     int_least32_t x, y, w, h;
@@ -27,7 +46,7 @@ typedef struct {
 typedef struct {
     size_t offset;
     bool pre_wrap;
-    int_least32_t x;
+    int_least32_t x_sticky, x, y, h; // x_sticky = x coordinate that should persist across vertical movement
 } Cursor;
 
 bool cursor_eq(Cursor c1, Cursor c2) { return c1.offset == c2.offset && c1.pre_wrap == c2.pre_wrap; }
@@ -44,17 +63,17 @@ bool sel_is_reversed(Selection sel) {
 Cursor sel_right(Selection sel) { return sel_is_reversed(sel) ? sel.start : sel.end; }
 Cursor sel_left(Selection sel) { return sel_is_reversed(sel) ? sel.end : sel.start; }
 
-void shapeText(const uint32_t *codepoints, size_t max_len, FT_Face face, int_least32_t w, Line *out) {
+void shape_text(const uint32_t *codepoints, size_t max_len, FT_Face face, int_least32_t w, Line *out) {
+    // sets out.count, out.xs.count, out.end
     out->xs.count = 0;
-    out->wrap = false;
-    // 64ths of a pixel to prevent accumulating error from adding rounded advance widths
-    uint_least64_t pen_x = 0; 
-    // last_space counts characters up to and including the most recent space
-    size_t i, last_space = 0;
+    out->end = END_INPUT;
+    uint_least64_t pen_x = 0; // 64ths of a pixel to prevent accumulating error from adding rounded advance widths
+    size_t i, last_space = 0; // last_space counts characters up to and including the most recent space
     for (i = 0; i < max_len; i++) {
         uint32_t cp = codepoints[i];
         if (cp == LF) {
-            out->codepoint_count = i + 1;
+            out->count = i + 1;
+            out->end = END_LF;
             return;
         }
         FT_Error error = FT_Load_Char(face, cp, FT_LOAD_BITMAP_METRICS_ONLY);
@@ -64,130 +83,131 @@ void shapeText(const uint32_t *codepoints, size_t max_len, FT_Face face, int_lea
         if (rounded_pen_x > w) {
             size_t count = last_space == 0 ? i : last_space;
             out->xs.count = count;
-            out->wrap = true;
-            out->codepoint_count = count;
+            out->end = END_WRAP;
+            out->count = count;
             return;
         } else append_int_least32_t(&out->xs, rounded_pen_x);
         if (cp == SPACE) last_space = i + 1;
     }
-    out->codepoint_count = i;
-}
-
-void BaneDrawText(TextBox box, TextureAtlas *atlas, FT_Face face) {
-    Color text_color = { 0xe3, 0x88, 0x64, 0xff };
-    int_least32_t lineheight = (face->size->metrics.height + 32) >> 6;
-    // Deep dive CSS: font metrics, line-height and vertical-align: https://iamvdo.me/en/blog/css-font-metrics-line-height-and-vertical-align
-    int_least32_t line_x = box.x, line_y = box.y + ((face->size->metrics.ascender + 32) >> 6);
-    FT_GlyphSlot slot = face->glyph; // shorthand
-    Line line = { .xs = create_int_least32_tArray(32) };
-    size_t processed = 0;
-    // printf("\n");
-    while (processed < box.codepoint_count) {
-        shapeText(box.codepoints + processed, box.codepoint_count - processed, face, box.w, &line);
-
-        // printf("LINE: y=%3i, processed=%3lu, new_processed=%2lu, wrap=%i, [", line_y, processed, new_processed, line.wrap);
-        // for (uint i = 0; i < line.xs.count; i++) {
-        //     printf("%3i, ", line.xs.items[i]);
-        // }
-        // printf("]\n");
-
-        assert(line.codepoint_count != 0); // would loop infinitely
-        for (size_t i = 0; i < line.codepoint_count; i++) {
-            uint32_t cp = *(box.codepoints + processed + i);
-            if (cp == LF || cp == SPACE) continue;
-            FT_UInt glyph_index = FT_Get_Char_Index(face, cp);
-            TextureRect rect;
-            TAStatus tastatus = texture_atlas_get_rect(&rect, atlas, glyph_index);
-            if (tastatus == TA_RECT_NOT_FOUND) {
-                FT_Error error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER);
-                assert(!error);
-                assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported
-                Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
-                tastatus = texture_atlas_add_get_rect(&rect, atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);
-                assert(tastatus == TA_OK);
-            }
-            tastatus = texture_atlas_draw(atlas, glyph_index, line_x + line.xs.items[i] - line.xs.items[0], line_y, text_color);
-            assert(tastatus == TA_OK);
-        }
-        processed += line.codepoint_count;
-        line_y += lineheight;
-        if (line_y > box.y + box.h) return;
-    }
-    destroy_int_least32_tArray(&line.xs);
+    out->count = i;
 }
 
 typedef struct {
-    int_least32_t x, y, h;
-} CursorPos;
+    TextureAtlas *atlas;
+    FT_Face face;
+    uint_least32_t line_height;
+    Color text_color, cursor_color, selection_color;
+} Style;
 
-void DrawCursor(CursorPos pos) { DrawLineEx((Vector2) {pos.x, pos.y}, (Vector2) {pos.x, pos.y + pos.h}, 1, WHITE); }
+int_least32_t line_height_px(Style style) { return style.line_height * ((style.face->size->metrics.height + 32) >> 6); }
 
-CursorPos GetCursorPosition(TextBox box, FT_Face face, Cursor cursor) {
-    assert(cursor.offset <= box.codepoint_count);
-    int_least32_t lineheight = (face->size->metrics.height + 32) >> 6;
-    int_least32_t cursor_x = box.x , cursor_y = box.y;
-    size_t line_offset = 0;
-    Line line = { .xs = create_int_least32_tArray(32), .codepoint_count = 0 };
-    if (cursor.offset > 0) {
-        while (true) {
-            line_offset += line.codepoint_count;
-            shapeText(box.codepoints + line_offset, box.codepoint_count - line_offset, face, box.w, &line);
-            if (line_offset + line.codepoint_count < cursor.offset) cursor_y += lineheight;
-            else break;
-        }
-        if (cursor.offset - line_offset > 0) {
-            if (cursor.offset - line_offset > line.xs.count || // cursor is at end of a line that ends with \n and so has one less xs than number of characters
-            (cursor.offset - line_offset == line.xs.count && !cursor.pre_wrap && line.wrap)) { // cursor is at end of a wrapping line but should be displayed in the next (pre_wrap = false)
-                cursor_y += lineheight;
-            } else cursor_x += line.xs.items[cursor.offset - line_offset - 1];  
-        } 
+void shape_line(TextBox box, Style style, size_t offset, bool pre_wrap, Line *out) {
+    int_least32_t line_height = line_height_px(style);
+    // Deep dive CSS: font metrics, line-height and vertical-align: https://iamvdo.me/en/blog/css-font-metrics-line-height-and-vertical-align
+    out->y = box.y + ((style.face->size->metrics.ascender + 32) >> 6); // baseline, not bounding box
+    size_t processed = 0;
+    while (true) {
+        assert(processed <= box.codepoint_count);
+        shape_text(box.codepoints + processed, box.codepoint_count - processed, style.face, box.w, out);
+        out->offset = processed;
+        processed += out->count;
+        if (!line_contains_pos(*out, offset, pre_wrap)) out->y += line_height;
+        else break;
     }
-    destroy_int_least32_tArray(&line.xs);
-    return (CursorPos) { cursor_x, cursor_y, ((face->size->metrics.ascender - face->size->metrics.descender + 32) >> 6) };
 }
 
-void DrawSelection(TextBox box, FT_Face face, Selection sel) {
-    Color sel_color = { 255, 0, 0, 128 };
+bool next_line(TextBox box, Style style, Line *in, Line *out) {
+    // does not modify out if there isn't a line after this!
+    size_t new_offset = in->offset + in->count;
+    if (new_offset > box.codepoint_count || (new_offset == box.codepoint_count && in->end != END_LF)) return false; // no line after this
+    out->y += line_height_px(style);
+    out->offset = new_offset;
+    shape_text(box.codepoints + out->offset, box.codepoint_count - new_offset, style.face, box.w, out);
+    return true;
+}
+
+void draw_text(TextBox box, Style style) {
+    // NOTE: characters aren't drawn one by one because it takes rendering the whole line in advance to know where it wraps
+    Line line = line_create();
+    shape_line(box, style, 0, true, &line); // first line
+    FT_GlyphSlot slot = style.face->glyph; // shorthand
+    bool one_more_line = true;
+    while (one_more_line) {
+        for (size_t i = 0; i < line.count; i++) {
+            uint32_t cp = *(box.codepoints + line.offset + i);
+            if (cp == LF || cp == SPACE) continue;
+            FT_UInt glyph_index = FT_Get_Char_Index(style.face, cp);
+            TextureRect rect;
+            TAStatus tastatus = texture_atlas_get_rect(&rect, style.atlas, glyph_index);
+            if (tastatus == TA_RECT_NOT_FOUND) {
+                FT_Error error = FT_Load_Glyph(style.face, glyph_index, FT_LOAD_RENDER);
+                assert(!error);
+                assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported
+                Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
+                tastatus = texture_atlas_add_get_rect(&rect, style.atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);
+                assert(tastatus == TA_OK);
+            }
+            tastatus = texture_atlas_draw(style.atlas, glyph_index, box.x + line.xs.items[i] - line.xs.items[0], line.y, style.text_color);
+            assert(tastatus == TA_OK);
+        }
+        one_more_line = next_line(box, style, &line, &line);
+        if (line.y > box.y + box.h) return;
+    }
+    line_destroy(line);
+}
+
+void DrawCursor(Cursor cursor) { DrawLineEx((Vector2) {cursor.x, cursor.y}, (Vector2) {cursor.x, cursor.y + cursor.h}, 1, WHITE); }
+
+int_least32_t get_cursor_x(Line line, size_t offset) {
+    if (line.offset == offset) return 0;
+    assert(offset - line.offset > 0);
+    size_t idx = offset - line.offset - 1;
+    assert(line.xs.count > idx);
+    return line.xs.items[idx];
+}
+
+void SetCursorPosition(TextBox box, Style style, Cursor *cursor) {
+    assert(cursor->offset <= box.codepoint_count);
+    cursor->x = box.x, cursor->y = box.y;
+    if (cursor->offset > 0) {
+        Line line = line_create();
+        shape_line(box, style, cursor->offset, cursor->pre_wrap, &line);
+        cursor->x = box.x + get_cursor_x(line, cursor->offset);
+        cursor->y = line_top(line, style.face);
+        line_destroy(line);
+    }
+    cursor->h = line_height_px(style);
+}
+
+void DrawSelection(TextBox box, Style style, Selection sel) {
     if (cursor_eq(sel.start, sel.end) || !sel.active) { return; }
     assert(sel.start.offset <= box.codepoint_count && sel.end.offset <= box.codepoint_count);
-    int_least32_t lineheight = (face->size->metrics.height + 32) >> 6;
-    int_least32_t line_y = box.y;
+    int_least32_t lineheight = line_height_px(style);
     Cursor first, second;
     if (sel_is_reversed(sel)) { first = sel.end; second = sel.start; }
     else { first = sel.start; second = sel.end; }
-    size_t line_offset, line_end_offset = 0;
     int_least32_t sel_x0, sel_x1;
-    Line line = { .xs = create_int_least32_tArray(32), .codepoint_count = 0 };
-    while (true) {
-        line_offset = line_end_offset;
-        shapeText(box.codepoints + line_offset, box.codepoint_count - line_offset, face, box.w, &line);
-        line_end_offset = line_offset + line.codepoint_count;
-        if ((line_end_offset > first.offset && line_offset <= second.offset) ||
-        // include wrapping lines where selection starts at very end to be able to indicate that
-        (line_end_offset == first.offset && line.wrap && first.pre_wrap)) {
-            if (line.xs.count == 0) { // happens in lines with only \n
-                sel_x0 = box.x;
-                sel_x1 = sel_x0 + 4;
-            }
-            else {    
-                if (line_offset >= first.offset) { sel_x0 = box.x; }
-                else {
-                    sel_x0 = box.x + line.xs.items[first.offset - line_offset - 1];
-                }
-                if (line_end_offset <= second.offset) {
-                    // selection goes all the way to line end.
-                    sel_x1 = box.x + line.xs.items[line.xs.count - 1];
-                } else {
-                    // selection ends midline
-                    sel_x1 = box.x + line.xs.items[second.offset - line_offset - 1];
-                }
-            }
-            DrawRectangle(sel_x0, line_y, max(sel_x1 - sel_x0, 4), lineheight, sel_color);
+    Line line = line_create();
+    shape_line(box, style, first.offset, first.pre_wrap, &line);
+    sel_x0 = get_cursor_x(line, first.offset);
+    bool ends_in_same_line = line_contains_pos(line, second.offset, second.pre_wrap);
+    sel_x1 = ends_in_same_line ? get_cursor_x(line, second.offset) : line.xs.items[line.xs.count - 1];
+    DrawRectangle(sel_x0, line_top(line, style.face), max(sel_x1 - sel_x0, 4), lineheight, style.selection_color);
+
+    if (!ends_in_same_line) {
+        bool one_more_line = next_line(box, style, &line, &line);
+        assert(one_more_line);
+        while (true) {
+            one_more_line = next_line(box, style, &line, &line);
+            assert(one_more_line);
+            if (line_contains_pos(line, second.offset, second.pre_wrap)) break;
+            else DrawRectangle(box.x, line_top(line, style.face), line.xs.items[line.xs.count - 1], lineheight, style.selection_color);
         }
-        if (line_end_offset < second.offset) line_y += lineheight;
-        else break;
+        sel_x0 = box.x;
+        sel_x1 = get_cursor_x(line, second.offset);
+        DrawRectangle(sel_x0, line_top(line, style.face), max(sel_x1 - sel_x0, 4), lineheight, style.selection_color);
     }
-    destroy_int_least32_tArray(&line.xs);
+    line_destroy(line);
 }
 
 void cursor_right(TextBox box, Cursor *cursor) {
@@ -204,93 +224,45 @@ void cursor_left(Cursor *cursor) {
     }
 }
 
-void cursor_down(TextBox box, FT_Face face, Cursor *cursor) {
-    assert(cursor->offset <= box.codepoint_count);
-    size_t line_offset = 0;
-    Line line = { .xs = create_int_least32_tArray(32), .codepoint_count = 0 };
-    while (true) {
-        line_offset += line.codepoint_count;
-        shapeText(box.codepoints + line_offset, box.codepoint_count - line_offset, face, box.w, &line);
-        if (line_offset + line.codepoint_count == box.codepoint_count ||
-            line_offset + line.codepoint_count > cursor->offset ||
-            (line_offset + line.codepoint_count == cursor->offset && line.wrap && cursor->pre_wrap)) break;
-    }
-    /*
-    is there a line below?
-        yes: which is the closest x to cursor.x?
-        no: replace this movement with cursor_end / or go to end of line directly
-    */
-    size_t line_end_offset = line_offset + line.codepoint_count;
-    // NOTE: if line is \n and its the last line, follwing two if statements will be false, so setting pre_wrap and offset here
+void cursor_set_closest_x(TextBox box, Line line, Cursor *cursor) {
+    cursor->offset = line.offset;
     cursor->pre_wrap = false;
-    cursor->offset = line_end_offset;
-    if (line_end_offset < box.codepoint_count) { // is there at least one more line that can be shaped?
-        shapeText(box.codepoints + line_end_offset, box.codepoint_count - line_end_offset, face, box.w, &line);
-        uint_least32_t d = abs(box.x - cursor->x);
-        for (size_t i = 0; i < line.xs.count; i++) { // could be binary search for speed
-            uint_least32_t d0 = abs(box.x + line.xs.items[i] - cursor->x);
-            if (d0 < d) {
-                d = d0;
-                cursor->offset = line_end_offset + i + 1;
-                cursor->pre_wrap = true;
-            }
+    uint_least32_t d = abs(box.x - cursor->x_sticky);
+    for (size_t i = 0; i < line.xs.count; i++) { // could be binary search for speed
+        uint_least32_t d0 = abs(box.x + line.xs.items[i] - cursor->x_sticky);
+        if (d0 < d) {
+            d = d0;
+            cursor->offset = line.offset + i + 1;
+            cursor->pre_wrap = true;
         }
-        printf("lines below, moving down\n");
-    } else if (line.xs.count > 0) { // no lines below, move to end of line
-        printf("no lines below, moving to end of line\n");
-        cursor->pre_wrap = true;
-        cursor->offset = line_end_offset;
     }
-    destroy_int_least32_tArray(&line.xs);
 }
 
-void line_copy(Line *dest, Line src) {
-    dest->codepoint_count = src.codepoint_count;
-    dest->wrap = src.wrap;
-    copy_int_least32_t(&dest->xs, &src.xs);
+void cursor_down(TextBox box, Style style, Cursor *cursor) {
+    Line line = line_create();
+    shape_line(box, style, cursor->offset, cursor->pre_wrap, &line);
+    if (!next_line(box, style, &line, &line)) cursor->offset = line.offset + line.count;
+    else cursor_set_closest_x(box, line, cursor);
+    line_destroy(line);
 }
 
-void cursor_up(TextBox box, FT_Face face, Cursor *cursor) {
-    assert(cursor->offset <= box.codepoint_count);
-    size_t line_offset = 0;
-    bool prev_line_set = false;
-    Line prev_line = { .xs = create_int_least32_tArray(32), .codepoint_count = 0 };
-    Line line = { .xs = create_int_least32_tArray(32), .codepoint_count = 0 };
-    while (true) {
-        line_offset += line.codepoint_count;
-        shapeText(box.codepoints + line_offset, box.codepoint_count - line_offset, face, box.w, &line);
-        if (line_offset + line.codepoint_count == box.codepoint_count ||
-            line_offset + line.codepoint_count > cursor->offset ||
-            (line_offset + line.codepoint_count == cursor->offset && line.wrap && cursor->pre_wrap)) break;
-        line_copy(&prev_line, line);
-        prev_line_set = true;
-    }
-    /*
-    is there a line above?
-        yes: which is the closest x to cursor.x?
-        no: replace this movement with cursor_start / or go to start of line directly
-    */
-    if (prev_line_set) {
-        size_t line_start_offset = line_offset - prev_line.codepoint_count;
-        printf("there is a previous line. start_offset = %lu\n", line_start_offset);
-        cursor->offset = line_start_offset;
-        cursor->pre_wrap = false;
-        uint_least32_t d = abs(box.x - cursor->x);
-        for (size_t i = 0; i < prev_line.xs.count; i++) { // could be binary search for speed
-            uint_least32_t d0 = abs(box.x + prev_line.xs.items[i] - cursor->x);
-            if (d0 < d) {
-                d = d0;
-                cursor->offset = line_start_offset + i + 1;
-                cursor->pre_wrap = true;
-            }
+void cursor_up(TextBox box, Style style, Cursor *cursor) {
+    if (cursor->offset > 0) {
+        Line lines[2] = {line_create(), line_create()};
+        uint_least8_t head = 0;
+        shape_line(box, style, 0, true, &lines[head]);
+        while(!line_contains_pos(lines[head], cursor->offset, cursor->pre_wrap)) {
+            bool one_more_line = next_line(box, style, lines + head, lines + ((head + 1) % 2));
+            assert(one_more_line);
+            head = (head + 1) % 2;
         }
-    } else {
-        printf("no previous line\n");
-        cursor->offset = 0;
-        cursor->pre_wrap = false;
+        if (lines[head].offset == 0) { // no previous line
+            cursor->pre_wrap = false;
+            cursor->offset = 0;
+        } else cursor_set_closest_x(box, lines[abs(head - 1) % 2], cursor);
+        line_destroy(lines[0]);
+        line_destroy(lines[1]);
     }
-    destroy_int_least32_tArray(&line.xs);
-    destroy_int_least32_tArray(&prev_line.xs);
 }
 
 int main(void) {
@@ -314,7 +286,7 @@ int main(void) {
     // "Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};\n"
     // "status = texture_atlas_add_get_rect(&rect, atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);\n"
     // "assert(status == TA_OK);  ";
-    char *text = u8"\na\naaaaa\n\na";
+    char *text = u8"\na\naaaaa\n\na\n";
     size_t len, processed_bytes;
     
     if (utf8_measure_codepoints(text, strlen(text), &len, &processed_bytes) != UTF8_OK) { return 1; }
@@ -329,14 +301,21 @@ int main(void) {
     TextBox textbox = { .x = 20, .y = 0, .w = 50, .h = 600, .codepoints = codepoints, .codepoint_count = len };
 
     Selection sel = { .active = false };
+
+    Style style = {
+        .atlas = glyph_atlas,
+        .cursor_color = WHITE,
+        .face = face,
+        .line_height = 1,
+        .selection_color = (Color) { 255, 0, 0, 128 },
+        .text_color = (Color) { 0xe3, 0x88, 0x64, 0xff }
+    };
     
     bool change_cursor_x = false;
     while (!WindowShouldClose()) {
-        // CursorPos cursorpos = { 0 };
-        // bool cursorpos_defined = false;
         BeginDrawing();
         ClearBackground(BLACK);
-        BaneDrawText(textbox, glyph_atlas, face);
+        draw_text(textbox, style);
         bool selecting = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
         if (IsKeyPressed(KEY_RIGHT)) {
             if (selecting) {
@@ -379,11 +358,11 @@ int main(void) {
         if (IsKeyPressed(KEY_DOWN)) {
             if (selecting) {
                 if (sel.active) {
-                    cursor_down(textbox, face, &cursor);
+                    cursor_down(textbox, style, &cursor);
                     sel.active = !cursor_eq(sel.start, cursor);
                 } else {
                     sel.start = cursor;
-                    cursor_down(textbox, face, &cursor);
+                    cursor_down(textbox, style, &cursor);
                     sel.active = true;
                 }
                 sel.end = cursor;
@@ -392,17 +371,17 @@ int main(void) {
                     cursor = sel_right(sel);
                     sel.active = false;
                 }
-                cursor_down(textbox, face, &cursor);
+                cursor_down(textbox, style, &cursor);
             }
         }
         if (IsKeyPressed(KEY_UP)) {
             if (selecting) {
                 if (sel.active) {
-                    cursor_up(textbox, face, &cursor);
+                    cursor_up(textbox, style, &cursor);
                     sel.active = !cursor_eq(sel.start, cursor);
                 } else {
                     sel.start = cursor;
-                    cursor_up(textbox, face, &cursor);
+                    cursor_up(textbox, style, &cursor);
                     sel.active = true;
                 }
                 sel.end = cursor;
@@ -411,17 +390,16 @@ int main(void) {
                     cursor = sel_left(sel);
                     sel.active = false;
                 }
-                cursor_up(textbox, face, &cursor);
+                cursor_up(textbox, style, &cursor);
             }
         }
-        DrawSelection(textbox, face, sel);
-        // cursor.x = cursorpos.x;
-        CursorPos cursor_pos = GetCursorPosition(textbox, face, cursor);
+        DrawSelection(textbox, style, sel);
+        SetCursorPosition(textbox, style, &cursor);
         if (change_cursor_x) {
-            cursor.x = cursor_pos.x;
+            cursor.x_sticky = cursor.x;
             change_cursor_x = false;
         }
-        DrawCursor(cursor_pos);
+        DrawCursor(cursor);
         DrawLineEx((Vector2) {textbox.x + textbox.w, textbox.y}, (Vector2) {textbox.x + textbox.w, textbox.y + textbox.h}, 2, WHITE);
         EndDrawing();
     }
