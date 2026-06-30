@@ -35,17 +35,17 @@ void rectmap_destroy(RectMap *map);
 #define ARRAY_DECLARE(STRUCT) \
     typedef struct {\
         STRUCT *items; \
-        unsigned int count, cap; \
+        size_t count, cap; \
     } STRUCT##Array; \
-    STRUCT##Array create_##STRUCT##Array(uint cap); \
+    STRUCT##Array create_##STRUCT##Array(size_t cap); \
     void destroy_##STRUCT##Array(STRUCT##Array *a); \
     void expand_##STRUCT##Array(STRUCT##Array *a); \
     void append_##STRUCT(STRUCT##Array *a, TYPEOF(*a->items) item); \
-    void delete_##STRUCT(STRUCT##Array *a, unsigned int index); \
-    void insert_##STRUCT(STRUCT##Array *a, unsigned int index, TYPEOF(*a->items) item);
+    void delete_##STRUCT(STRUCT##Array *a, size_t index); \
+    void insert_##STRUCT(STRUCT##Array *a, size_t index, TYPEOF(*a->items) item);
 
 #define ARRAY_DEFINE(STRUCT) \
-    STRUCT##Array create_##STRUCT##Array(uint cap) { \
+    STRUCT##Array create_##STRUCT##Array(size_t cap) { \
         STRUCT##Array ret = {malloc(cap * sizeof(STRUCT)), 0, cap}; \
         ensure(ret.items != NULL); \
         return ret; \
@@ -68,15 +68,15 @@ void rectmap_destroy(RectMap *map);
         a->items[a->count] = item; \
         a->count++; \
     } \
-    void delete_##STRUCT(STRUCT##Array *a, unsigned int index) { \
+    void delete_##STRUCT(STRUCT##Array *a, size_t index) { \
         assert(index < a->count); \
-        for (unsigned int i = index; i + 1 < a->count; i++) { a->items[i] = a->items[i+1]; } \
+        for (size_t i = index; i + 1 < a->count; i++) { a->items[i] = a->items[i+1]; } \
         a->count--; \
     } \
-    void insert_##STRUCT(STRUCT##Array *a, unsigned int index, TYPEOF(*a->items) item) { \
+    void insert_##STRUCT(STRUCT##Array *a, size_t index, TYPEOF(*a->items) item) { \
         assert(index <= a->count); \
         expand_##STRUCT##Array(a); \
-        for (unsigned i = a->count; i > index; i--) { a->items[i] = a->items[i-1]; } \
+        for (size_t i = a->count; i > index; i--) { a->items[i] = a->items[i-1]; } \
         a->items[index] = item; \
         a->count++; \
     }
