@@ -127,6 +127,7 @@ typedef struct {
 } IntVec2;
 
 ARRAY_DECLARE(IntVec2)
+ARRAY_DECLARE(int_least32_t)
 
 #define DEFAULT_TEXTURE_ATLAS_SIZE 64
 #define DEFAULT_SKYLINE_ANCHOR_CAP 32
@@ -221,5 +222,59 @@ UTF8Status utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool st
 UTF8Status utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes);
 
 #define INVALID_CODEPOINT UINT32_C(0xFFFD)
+
+// TEXT
+#define SCALE 1.25 // HACK: known scaling on testing machine
+
+#define LF 0xA // \n
+#define SPACE 0x20
+
+#include "ft2build.h"
+#include FT_FREETYPE_H
+
+typedef struct {
+    int_least32_t x, y, w, h;
+    uint32_t *codepoints;
+    size_t codepoint_count;
+} TextBox;
+
+typedef struct {
+    TextureAtlas *atlas;
+    FT_Face face;
+    uint_least32_t line_height;
+    Color text_color, cursor_color, selection_color;
+} Style;
+
+typedef struct {
+    size_t offset;
+    bool pre_wrap;
+    int_least32_t sticky_x; // x coordinate that persists across vertical movement
+} TextLocation;
+
+typedef struct {
+    TextLocation cursor;
+    TextLocation sel_start;
+    bool sel_active;
+    int_least32_t x, y, h; 
+} Cursor;
+
+void draw_text(TextBox box, Style style);
+
+void draw_cursor(TextBox box, Style style, Cursor cursor);
+void set_cursor_position(TextBox box, Style style, Cursor *cursor);
+
+void cursor_right(TextBox box, Cursor *cursor, bool selecting);
+void cursor_left(Cursor *cursor, bool selecting);
+void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting);
+
+
+// Line line_create();
+// void line_destroy(Line line);
+// bool line_contains_pos(Line line, size_t offset, bool pre_wrap);
+// int_least32_t line_top(Line line, FT_Face face);
+
+// void shape_line(TextBox box, Style style, size_t offset, bool pre_wrap, Line *out);
+// bool next_line(TextBox box, Style style, Line *in, Line *out);
 
 #endif
