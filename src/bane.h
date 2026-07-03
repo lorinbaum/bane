@@ -224,6 +224,7 @@ UTF8Status utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_l
 #define INVALID_CODEPOINT UINT32_C(0xFFFD)
 
 // TEXT
+
 #define SCALE 1.25 // HACK: known scaling on testing machine
 
 #define LF 0xA // \n
@@ -249,32 +250,20 @@ typedef struct {
     size_t offset;
     bool pre_wrap;
     int_least32_t sticky_x; // x coordinate that persists across vertical movement
-} TextLocation;
+} CursorLoc;
 
 typedef struct {
-    TextLocation cursor;
-    TextLocation sel_start;
-    bool sel_active;
-    int_least32_t x, y, h; 
+    CursorLoc loc;
+    CursorLoc sel_start;
+    bool sel_active, update_sticky_x;
 } Cursor;
 
 void draw_text(TextBox box, Style style);
-
-void draw_cursor(TextBox box, Style style, Cursor cursor);
-void set_cursor_position(TextBox box, Style style, Cursor *cursor);
+void draw_cursor(TextBox box, Style style, Cursor *cursor);
 
 void cursor_right(TextBox box, Cursor *cursor, bool selecting);
 void cursor_left(Cursor *cursor, bool selecting);
 void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting);
-
-
-// Line line_create();
-// void line_destroy(Line line);
-// bool line_contains_pos(Line line, size_t offset, bool pre_wrap);
-// int_least32_t line_top(Line line, FT_Face face);
-
-// void shape_line(TextBox box, Style style, size_t offset, bool pre_wrap, Line *out);
-// bool next_line(TextBox box, Style style, Line *in, Line *out);
 
 #endif

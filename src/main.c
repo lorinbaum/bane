@@ -36,7 +36,7 @@ int main(void) {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(800, 450, "Bane of my existence");
 
-    Cursor cursor = { .cursor.offset = 0, .cursor.pre_wrap = false, .cursor.sticky_x = 0, .sel_active = false };
+    Cursor cursor = { 0 };
     TextBox textbox = { .x = 20, .y = 0, .w = 50, .h = 600, .codepoints = codepoints, .codepoint_count = len };
 
     Style style = {
@@ -48,29 +48,17 @@ int main(void) {
         .text_color = (Color) { 0xe3, 0x88, 0x64, 0xff }
     };
 
-    bool change_sticky_x = false;
     while (!WindowShouldClose()) {
         BeginDrawing();
         ClearBackground(BLACK);
         draw_text(textbox, style);
         bool selecting = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-        if (IsKeyPressed(KEY_RIGHT)) {
-            cursor_right(textbox, &cursor, selecting);
-            change_sticky_x = true;
-        } 
-        if (IsKeyPressed(KEY_LEFT)) {
-            cursor_left(&cursor, selecting);
-            change_sticky_x = true;
-        }
+        if (IsKeyPressed(KEY_RIGHT)) cursor_right(textbox, &cursor, selecting);
+        if (IsKeyPressed(KEY_LEFT)) cursor_left(&cursor, selecting);
         if (IsKeyPressed(KEY_DOWN)) cursor_down(textbox, style, &cursor, selecting); 
         if (IsKeyPressed(KEY_UP)) cursor_up(textbox, style, &cursor, selecting);
-        // draw_selection(textbox, style, sel);
-        set_cursor_position(textbox, style, &cursor);
-        if (change_sticky_x) {
-            cursor.cursor.sticky_x = cursor.x;
-            change_sticky_x = false;
-        }
-        draw_cursor(textbox, style, cursor);
+        
+        draw_cursor(textbox, style, &cursor);
         DrawLineEx((Vector2) {textbox.x + textbox.w, textbox.y}, (Vector2) {textbox.x + textbox.w, textbox.y + textbox.h}, 2, WHITE);
         EndDrawing();
     }
