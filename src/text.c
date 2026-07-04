@@ -162,7 +162,7 @@ static int_least32_t x_offset(Line line, size_t offset) {
     return line.xs.items[idx];
 }
 
-static int_least32_t sel_min_w(Line line, size_t start, size_t end) { return line.count == 1 && line.end == END_LF ? 4 : 0; }
+static int_least32_t sel_min_w(Line line) { return line.count == 1 && line.end == END_LF ? 4 : 0; }
 
 static void draw_selection(TextBox box, Style style, const Cursor *cursor) {
     if (!cursor->sel_active || locs_overlap(cursor->loc, cursor->sel_start)) return;
@@ -174,16 +174,16 @@ static void draw_selection(TextBox box, Style style, const Cursor *cursor) {
     shape_line(box, style, start.offset, start.pre_wrap, &line);
     int_least32_t x = box.x + x_offset(line, start.offset), y = line.y - baseline_offset(style.face), w, h = line_height_px(style);
     if (line_contains(line, end.offset, end.pre_wrap)) {
-        DrawRectangle(x, y, max(sel_min_w(line, start.offset, end.offset), box.x + x_offset(line, end.offset) - x), h, style.selection_color);
+        DrawRectangle(x, y, max(sel_min_w(line), box.x + x_offset(line, end.offset) - x), h, style.selection_color);
     }
     else {
-        DrawRectangle(x, y, max(sel_min_w(line, start.offset, end.offset), box.x + line.xs.items[line.xs.count - 1] - x), h, style.selection_color);
+        DrawRectangle(x, y, max(sel_min_w(line), box.x + line.xs.items[line.xs.count - 1] - x), h, style.selection_color);
         while (true) {
             bool one_more_line = next_line(box, style, &line, &line);
             assert(one_more_line);
             if (line_contains(line, end.offset, end.pre_wrap)) break;
             else {
-                w = max(sel_min_w(line, start.offset, end.offset), line.xs.items[line.xs.count - 1]);
+                w = max(sel_min_w(line), line.xs.items[line.xs.count - 1]);
                 DrawRectangle(box.x, line.y - baseline_offset(style.face), w, h, style.selection_color);
             }
         }
