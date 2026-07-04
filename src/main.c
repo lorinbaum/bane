@@ -53,12 +53,12 @@ int main(void) {
         ClearBackground(BLACK);
         draw_text(textbox, style);
         bool selecting = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-        if (IsKeyPressed(KEY_RIGHT)) cursor_right(textbox, &cursor, selecting);
-        if (IsKeyPressed(KEY_LEFT)) cursor_left(&cursor, selecting);
-        if (IsKeyPressed(KEY_DOWN)) cursor_down(textbox, style, &cursor, selecting); 
-        if (IsKeyPressed(KEY_UP)) cursor_up(textbox, style, &cursor, selecting);
-        if (IsKeyPressed(KEY_HOME)) cursor_home(textbox, style, &cursor, selecting);
-        if (IsKeyPressed(KEY_END)) cursor_end(textbox, style, &cursor, selecting);
+        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) cursor_right(textbox, &cursor, selecting);
+        if (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) cursor_left(&cursor, selecting);
+        if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) cursor_down(textbox, style, &cursor, selecting); 
+        if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) cursor_up(textbox, style, &cursor, selecting);
+        if (IsKeyPressed(KEY_HOME) || IsKeyPressedRepeat(KEY_HOME)) cursor_home(textbox, style, &cursor, selecting);
+        if (IsKeyPressed(KEY_END) || IsKeyPressedRepeat(KEY_END)) cursor_end(textbox, style, &cursor, selecting);
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) cursor_mouse(textbox, style, &cursor, GetMousePosition(), selecting);
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) cursor_mouse(textbox, style, &cursor, GetMousePosition(), true);
         
