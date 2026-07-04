@@ -261,7 +261,7 @@ void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting) {
         if (!next_line(box, style, &line, &line)) cursor->loc.offset = line.offset + line.count;
         else cursor_to_closest_x(box, line, cursor, cursor->loc.sticky_x);
         line_destroy(line);
-    }
+    } else cursor->update_sticky_x = true;
 }
 
 void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting) {
@@ -282,7 +282,7 @@ void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting) {
         } else cursor_to_closest_x(box, lines[abs(head - 1) % 2], cursor, cursor->loc.sticky_x);
         line_destroy(lines[0]);
         line_destroy(lines[1]);
-    }
+    } else cursor->update_sticky_x = true;
 }
 
 void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting) {
