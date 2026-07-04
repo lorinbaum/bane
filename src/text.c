@@ -1,23 +1,5 @@
 #include "bane.h"
 
-/*
-FOR DEBUGGING
-static void print_line(Line line) {
-    size_t array_str_len = line.xs.count * 5;
-    char array_str[max(array_str_len + 1, (size_t) 3)];
-    if (line.xs.count > 0) {
-        snprintf(array_str, array_str_len, "[");
-        size_t offset = 1;
-        for (size_t i = 0; i < line.xs.count; i++){
-            snprintf(array_str + offset, array_str_len - offset, "%3i, ", line.xs.items[i]);
-            offset += 5;
-        }
-        snprintf(array_str + array_str_len - 1, 2, "]");
-    } else sprintf(array_str, "[]");
-    printf("Line(offset=%lu, count=%lu, baseline=%i, xs.count=%lu, xs.items=%s)\n", line.offset, line.count, line.y, line.xs.count, array_str);
-}
-*/
-
 ARRAY_DEFINE(int_least32_t)
 
 typedef enum { END_WRAP = 0, END_LF = 1, END_INPUT = 2 } LineEnd;
@@ -28,6 +10,22 @@ typedef struct {
     size_t offset; // codepoints[offset] is first character in line
     int_least32_t y; // text baseline, not bounding box
 } Line;
+
+// FOR DEBUGGING
+// static void print_line(Line line) {
+//     size_t array_str_len = line.xs.count * 5;
+//     char array_str[max(array_str_len + 1, (size_t) 3)];
+//     if (line.xs.count > 0) {
+//         snprintf(array_str, array_str_len, "[");
+//         size_t offset = 1;
+//         for (size_t i = 0; i < line.xs.count; i++){
+//             snprintf(array_str + offset, array_str_len - offset, "%3i, ", line.xs.items[i]);
+//             offset += 5;
+//         }
+//         snprintf(array_str + array_str_len - 1, 2, "]");
+//     } else sprintf(array_str, "[]");
+//     printf("Line(offset=%lu, count=%lu, baseline=%i, xs.count=%lu, xs.items=%s)\n", line.offset, line.count, line.y, line.xs.count, array_str);
+// }
 
 static Line line_create() { return (Line) { .xs = create_int_least32_tArray(32) }; }
 static void line_destroy(Line line) { destroy_int_least32_tArray(&line.xs);}
@@ -120,7 +118,7 @@ static void shape_line(TextBox box, Style style, size_t offset, bool pre_wrap, L
 static bool next_line(TextBox box, Style style, Line *in, Line *out) {
     size_t new_offset = in->offset + in->count;
     if (new_offset > box.codepoint_count || (new_offset == box.codepoint_count && in->end != END_LF)) return false; // no line after this
-    out->y += line_height_px(style);
+    out->y = in->y + line_height_px(style);
     out->offset = new_offset;
     shape_text(box.codepoints + out->offset, box.codepoint_count - new_offset, style.face, box.w, out);
     return true;
@@ -233,16 +231,12 @@ void cursor_left(Cursor *cursor, bool selecting) {
     }
 }
 
-static void cursor_to_closest_x(TextBox box, Style style, Line line, Cursor *cursor) {
-    if (cursor->update_sticky_x) {
-        cursor->loc.sticky_x = cursor_pos(box, style, cursor).x;
-        cursor->update_sticky_x = false;
-    }
+static void cursor_to_closest_x(TextBox box, Line line, Cursor *cursor, int_least32_t x) {
     cursor->loc.offset = line.offset;
     cursor->loc.pre_wrap = false;
-    uint_least32_t d = abs(box.x - cursor->loc.sticky_x);
+    uint_least32_t d = abs(box.x - x);
     for (size_t i = 1; i < line.xs.count; i++) { // could be binary search for speed. starts at i == 1 because line.xs.items[0] = 0
-        uint_least32_t d0 = abs(box.x + line.xs.items[i] - cursor->loc.sticky_x);
+        uint_least32_t d0 = abs(box.x + line.xs.items[i] - x);
         if (d0 < d) {
             d = d0;
             cursor->loc.offset = line.offset + i;
@@ -251,19 +245,28 @@ static void cursor_to_closest_x(TextBox box, Style style, Line line, Cursor *cur
     }
 }
 
+static void update_sticky_x(TextBox box, Style style, Cursor *cursor) {
+    if (cursor->update_sticky_x) {
+        cursor->loc.sticky_x = cursor_pos(box, style, cursor).x;
+        cursor->update_sticky_x = false;
+    }
+}
+
 void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting) {
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
     if (cursor->loc.offset < box.codepoint_count) {
+        update_sticky_x(box, style, cursor);
         Line line = line_create();
         shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
         if (!next_line(box, style, &line, &line)) cursor->loc.offset = line.offset + line.count;
-        else cursor_to_closest_x(box, style, line, cursor);
+        else cursor_to_closest_x(box, line, cursor, cursor->loc.sticky_x);
         line_destroy(line);
     }
 }
 
 void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting) {
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_first(cursor->loc, cursor->sel_start);
+    update_sticky_x(box, style, cursor);
     if (cursor->loc.offset > 0) {
         Line lines[2] = {line_create(), line_create()};
         uint_least8_t head = 0;
@@ -276,8 +279,61 @@ void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting) {
         if (lines[head].offset == 0) { // no previous line
             cursor->loc.pre_wrap = false;
             cursor->loc.offset = 0;
-        } else cursor_to_closest_x(box, style, lines[abs(head - 1) % 2], cursor);
+        } else cursor_to_closest_x(box, lines[abs(head - 1) % 2], cursor, cursor->loc.sticky_x);
         line_destroy(lines[0]);
         line_destroy(lines[1]);
     }
+}
+
+void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting) {
+    if (sel_deactivated(cursor, selecting)) cursor->loc = loc_first(cursor->loc, cursor->sel_start);
+    if (cursor->loc.offset > 0) {
+        Line line = line_create();
+        shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
+        if (cursor->loc.offset == line.offset) {
+            for (; cursor->loc.offset > 0; cursor->loc.offset--) if (box.codepoints[cursor->loc.offset - 1] == LF) break;
+        } else cursor->loc.offset = line.offset;
+        line_destroy(line);
+    }
+    cursor->loc.pre_wrap = false;
+    cursor->update_sticky_x = true;
+}
+
+void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting) {
+    if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
+    if (cursor->loc.offset < box.codepoint_count) {
+        Line line = line_create();
+        shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
+        size_t line_end = line.offset + line.xs.count - 1;
+        if (cursor->loc.offset == line_end) {
+            for (; cursor->loc.offset < box.codepoint_count; cursor->loc.offset++) if (box.codepoints[cursor->loc.offset] == LF) break;
+        } else cursor->loc.offset = line_end;
+        line_destroy(line);
+    }
+    cursor->loc.pre_wrap = true;
+    cursor->update_sticky_x = true;
+}
+
+void cursor_mouse(TextBox box, Style style, Cursor *cursor, Vector2 pos, bool selecting) {
+    sel_deactivated(cursor, selecting);
+    Line lines[2] = {line_create(), line_create()};
+    uint_least8_t head = 0;
+    shape_line(box, style, 0, true, &lines[head]);
+    int_least32_t x = (int_least32_t) (pos.x * SCALE + 0.5), y = (int_least32_t) (pos.y  * SCALE + 0.5);
+    int_least32_t dy = abs(box.y - y), h = line_height_px(style);
+    while (true) {
+        int_least32_t line_top = lines[head].y - baseline_offset(style.face);
+        if (y >= line_top && y < line_top + h) break;
+        else {
+            int_least32_t dy1 = min(abs(line_top - y), abs(line_top + h - y));
+            if (dy1 <= dy) dy = dy1;
+            else break; // following lines only increase distance
+        }
+        if (!next_line(box, style, lines + head, lines + ((head + 1) % 2))) break;
+        head = (head + 1) % 2;
+    }
+    cursor_to_closest_x(box, lines[head], cursor, x);
+    line_destroy(lines[0]);
+    line_destroy(lines[1]);
+    cursor->update_sticky_x = true;
 }

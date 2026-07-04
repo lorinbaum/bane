@@ -57,6 +57,10 @@ int main(void) {
         if (IsKeyPressed(KEY_LEFT)) cursor_left(&cursor, selecting);
         if (IsKeyPressed(KEY_DOWN)) cursor_down(textbox, style, &cursor, selecting); 
         if (IsKeyPressed(KEY_UP)) cursor_up(textbox, style, &cursor, selecting);
+        if (IsKeyPressed(KEY_HOME)) cursor_home(textbox, style, &cursor, selecting);
+        if (IsKeyPressed(KEY_END)) cursor_end(textbox, style, &cursor, selecting);
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) cursor_mouse(textbox, style, &cursor, GetMousePosition(), selecting);
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) cursor_mouse(textbox, style, &cursor, GetMousePosition(), true);
         
         draw_cursor(textbox, style, &cursor);
         DrawLineEx((Vector2) {textbox.x + textbox.w, textbox.y}, (Vector2) {textbox.x + textbox.w, textbox.y + textbox.h}, 2, WHITE);

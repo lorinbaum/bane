@@ -265,5 +265,8 @@ void cursor_right(TextBox box, Cursor *cursor, bool selecting);
 void cursor_left(Cursor *cursor, bool selecting);
 void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_mouse(TextBox box, Style style, Cursor *cursor, Vector2 pos, bool selecting);
 
 #endif
