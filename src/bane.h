@@ -234,7 +234,7 @@ UTF8Status utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_l
 #include FT_FREETYPE_H
 
 typedef struct {
-    int_least32_t x, y, w, h;
+    int_least32_t x, y, w, h, scroll_y; // scroll_y gets negative when scrolling down
     uint32_t *codepoints;
     size_t codepoint_count;
 } TextBox;
@@ -255,11 +255,10 @@ typedef struct {
 typedef struct {
     CursorLoc loc;
     CursorLoc sel_start;
-    bool sel_active, update_sticky_x;
+    bool sel_active, update_sticky_x, moved;
 } Cursor;
 
-void draw_text(TextBox box, Style style);
-void draw_cursor(TextBox box, Style style, Cursor *cursor);
+void draw_text(TextBox *box, Style style, Cursor *cursor);
 
 void cursor_right(TextBox box, Cursor *cursor, bool selecting);
 void cursor_left(Cursor *cursor, bool selecting);
@@ -267,6 +266,6 @@ void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting);
-void cursor_mouse(TextBox box, Style style, Cursor *cursor, Vector2 pos, bool selecting);
+void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int_least32_t y, bool selecting);
 
 #endif

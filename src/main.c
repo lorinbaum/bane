@@ -22,11 +22,12 @@ int main(void) {
     
     TextureAtlas *glyph_atlas = texture_atlas_create(4096);
     
-    // char *text = u8"assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\n"
-    // "Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};\n"
-    // "status = texture_atlas_add_get_rect(&rect, atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);\n"
-    // "assert(status == TA_OK);  ";
-    char *text = u8"\na\naaaaa\n\na\n";
+    char *text = u8"assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\n"
+    "Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};\n"
+    "status = texture_atlas_add_get_rect(&rect, atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);\n"
+    "assert(status == TA_OK);\n"
+    "assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\n";
+    // char *text = u8"\na\naaaaa\n\na\n";
     size_t len, processed_bytes;
     
     if (utf8_measure_codepoints(text, strlen(text), &len, &processed_bytes) != UTF8_OK) { return 1; }
@@ -37,7 +38,7 @@ int main(void) {
     InitWindow(800, 450, "Bane of my existence");
 
     Cursor cursor = { 0 };
-    TextBox textbox = { .x = 20, .y = 0, .w = 50, .h = 600, .codepoints = codepoints, .codepoint_count = len };
+    TextBox textbox = { .x = 50, .y = 50, .w = GetScreenWidth() - 100, .h = 100, .codepoints = codepoints, .codepoint_count = len };
 
     Style style = {
         .atlas = glyph_atlas,
@@ -48,10 +49,13 @@ int main(void) {
         .text_color = (Color) { 0xe3, 0x88, 0x64, 0xff }
     };
 
+    TextBox *last_hit = NULL;
+
     while (!WindowShouldClose()) {
+        if (IsWindowResized()) textbox.w = GetScreenWidth() - 100;
         BeginDrawing();
         ClearBackground(BLACK);
-        draw_text(textbox, style);
+        draw_text(&textbox, style, &cursor);
         bool selecting = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
         if (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) cursor_right(textbox, &cursor, selecting);
         if (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) cursor_left(&cursor, selecting);
@@ -59,11 +63,21 @@ int main(void) {
         if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) cursor_up(textbox, style, &cursor, selecting);
         if (IsKeyPressed(KEY_HOME) || IsKeyPressedRepeat(KEY_HOME)) cursor_home(textbox, style, &cursor, selecting);
         if (IsKeyPressed(KEY_END) || IsKeyPressedRepeat(KEY_END)) cursor_end(textbox, style, &cursor, selecting);
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) cursor_mouse(textbox, style, &cursor, GetMousePosition(), selecting);
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) cursor_mouse(textbox, style, &cursor, GetMousePosition(), true);
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            Vector2 pos = GetMousePosition();
+            int_least32_t x = (int_least32_t) (pos.x * SCALE + 0.5), y = (int_least32_t) (pos.y * SCALE + 0.5);
+            if (x >= textbox.x && x < textbox.x + textbox.w && y >= textbox.y && y < textbox.y + textbox.h) {
+                last_hit = &textbox;
+                cursor_mouse(textbox, style, &cursor, x, y, selecting);
+            } else last_hit = NULL;
+        }
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            Vector2 pos = GetMousePosition();
+            int_least32_t x = (int_least32_t) (pos.x * SCALE + 0.5), y = (int_least32_t) (pos.y * SCALE + 0.5);
+            if (last_hit == &textbox) cursor_mouse(textbox, style, &cursor, x, y, true);
+        }
         
-        draw_cursor(textbox, style, &cursor);
-        DrawLineEx((Vector2) {textbox.x + textbox.w, textbox.y}, (Vector2) {textbox.x + textbox.w, textbox.y + textbox.h}, 2, WHITE);
+        DrawRectangleLines(textbox.x, textbox.y, textbox.w, textbox.h, WHITE);
         EndDrawing();
     }
 
