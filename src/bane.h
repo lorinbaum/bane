@@ -243,7 +243,7 @@ typedef struct {
     TextureAtlas *atlas;
     FT_Face face;
     uint_least32_t line_height;
-    Color text_color, cursor_color, selection_color;
+    Color text_color, text_selected_color, cursor_color, selection_color;
 } Style;
 
 typedef struct {

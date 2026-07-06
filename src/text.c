@@ -133,40 +133,6 @@ static int_least32_t x_offset(Line line, size_t offset) {
     return line.xs.items[idx];
 }
 
-static int_least32_t sel_min_w(Line line) { return line.count == 1 && line.end == END_LF ? 4 : 0; }
-
-static void draw_selection(TextBox box, Style style, const Cursor *cursor) {
-    if (!cursor->sel_active || locs_overlap(cursor->loc, cursor->sel_start)) return;
-    assert(cursor->loc.offset <= box.codepoint_count && cursor->sel_start.offset <= box.codepoint_count);
-    CursorLoc start, end;
-    if (locs_reversed(cursor->loc, cursor->sel_start)) { start = cursor->sel_start; end = cursor->loc;}
-    else { start = cursor->loc; end = cursor->sel_start; }
-    Line line = line_create();
-    shape_line(box, style, start.offset, start.pre_wrap, &line);
-    int_least32_t baseline_offset = baseline_offset_px(style.face);
-    int_least32_t x = box.x + x_offset(line, start.offset), y = line.y - baseline_offset + box.scroll_y, h = line_height_px(style);
-    if (y >= box.y + box.h) return; // out of view
-    if (line_contains(line, end.offset, end.pre_wrap)) {
-        if (y + h > box.y) DrawRectangle(x, y , max(sel_min_w(line), box.x + x_offset(line, end.offset) - x), h, style.selection_color);
-    } else {
-        if (y + h > box.y) DrawRectangle(x, y, max(sel_min_w(line), box.x + line.xs.items[line.xs.count - 1] - x), h, style.selection_color);
-        while (true) {
-            bool one_more_line = next_line(box, style, &line, &line);
-            assert(one_more_line);
-            y = line.y - baseline_offset + box.scroll_y;
-            if (y >= box.y + box.h) return; // out of view
-            if (line_contains(line, end.offset, end.pre_wrap)) break;
-            else {
-                if (y + h < box.y) continue;
-                int_least32_t w = max(sel_min_w(line), line.xs.items[line.xs.count - 1]);
-                DrawRectangle(box.x, y, w, h, style.selection_color);
-            }
-        }
-        if (y + h > box.y) DrawRectangle(box.x, y, x_offset(line, end.offset), h, style.selection_color);
-    }
-    line_destroy(line);
-}
-
 typedef struct { int_least32_t x, y, h; } CursorPos;
 
 static CursorPos cursor_pos(TextBox box, Style style, const Cursor *cursor) {
@@ -182,7 +148,27 @@ static CursorPos cursor_pos(TextBox box, Style style, const Cursor *cursor) {
     return pos;
 }
 
+static void draw_char(Style style, uint32_t cp, int_least32_t x, int_least32_t y, Color color) {
+    if (cp == LF || cp == SPACE) return;
+    FT_UInt glyph_index = FT_Get_Char_Index(style.face, cp);
+    TextureRect rect;
+    TAStatus tastatus = texture_atlas_get_rect(&rect, style.atlas, glyph_index);
+    if (tastatus == TA_RECT_NOT_FOUND) {
+        FT_GlyphSlot slot = style.face->glyph;
+        FT_Error error = FT_Load_Glyph(style.face, glyph_index, FT_LOAD_RENDER);
+        assert(!error);
+        assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported
+        Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
+        tastatus = texture_atlas_add_get_rect(&rect, style.atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);
+        assert(tastatus == TA_OK);
+        // NOTE: not unloading `Image texture` because all it would do is free the freetype bitmap buffer. not intended.
+    }
+    tastatus = texture_atlas_draw(style.atlas, glyph_index, x, y, color);
+    assert(tastatus == TA_OK);
+}
+
 void draw_text(TextBox *box, Style style, Cursor *cursor) {
+    // NOTE: characters aren't drawn one by one because it takes preprocessing the whole line to know where it wraps
     CursorPos pos;
     if (cursor != NULL) {
         pos = cursor_pos(*box, style, cursor);
@@ -192,40 +178,43 @@ void draw_text(TextBox *box, Style style, Cursor *cursor) {
             cursor->moved = false;
         }
     }
-    // NOTE: characters aren't drawn one by one because it takes rendering the whole line in advance to know where it wraps
     Line line = line_create();
     shape_line(*box, style, 0, true, &line); // first line
-    FT_GlyphSlot slot = style.face->glyph; // shorthand
     int_least32_t line_height = line_height_px(style), baseline_offset = baseline_offset_px(style.face);
-    while (true) {
-        if (line.y - baseline_offset + line_height + box->scroll_y > box->y) {
-            for (size_t i = 0; i < line.count; i++) {;
-                uint32_t cp = box->codepoints[line.offset + i];
-                if (cp == LF || cp == SPACE) continue;
-                FT_UInt glyph_index = FT_Get_Char_Index(style.face, cp);
-                TextureRect rect;
-                TAStatus tastatus = texture_atlas_get_rect(&rect, style.atlas, glyph_index);
-                if (tastatus == TA_RECT_NOT_FOUND) {
-                    FT_Error error = FT_Load_Glyph(style.face, glyph_index, FT_LOAD_RENDER);
-                    assert(!error);
-                    assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported
-                    Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
-                    tastatus = texture_atlas_add_get_rect(&rect, style.atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);
-                    assert(tastatus == TA_OK);
-                    // NOTE: not unloading `Image texture` because all it would do is free the freetype bitmap buffer. not intended.
-                }
-                tastatus = texture_atlas_draw(style.atlas, glyph_index, box->x + line.xs.items[i], box->scroll_y + line.y, style.text_color);
-                assert(tastatus == TA_OK);
+    // skip invisible lines
+    while (line.y - baseline_offset + line_height + box->scroll_y <= box->y) if (!next_line(*box, style, &line, &line)) return; 
+    if (cursor != NULL && cursor->sel_active && !locs_overlap(cursor->loc, cursor->sel_start)) {
+        // draw text + selection together
+        CursorLoc start, end;
+        if (locs_reversed(cursor->loc, cursor->sel_start)) { start = cursor->sel_start; end = cursor->loc;}
+        else { start = cursor->loc; end = cursor->sel_start; }
+        do {
+            // draw text
+            for (size_t i = 0; i < line.count; i++) {
+                Color color = line.offset + i >= start.offset && line.offset + i < end.offset ? style.text_selected_color : style.text_color;
+                draw_char(style, box->codepoints[line.offset + i], box->x + line.xs.items[i], line.y + box->scroll_y, color);
             }
-        }
-        if (line.y + line_height + box->scroll_y >= box->y + box->h || !next_line(*box, style, &line, &line)) break;
-    }
+            // draw selection
+            if (line_contains(line, start.offset, start.pre_wrap)) {
+                int_least32_t x = box->x + x_offset(line, start.offset), y = line.y - baseline_offset + box->scroll_y, w;
+                if (line_contains(line, end.offset, end.pre_wrap)) w = box->x + x_offset(line, end.offset) - x;
+                else w = box->x + line.xs.items[line.xs.count - 1] - x + (line.end == END_LF ? 4 : 0);
+                DrawRectangle(x, y, w, line_height, style.selection_color);
+            } else if (line.offset + line.count > start.offset && line.offset <= end.offset) {
+                int_least32_t x = box->x, y = line.y - baseline_offset + box->scroll_y, w;
+                if (line_contains(line, end.offset, end.pre_wrap)) w = box->x + x_offset(line, end.offset) - x;
+                else w = line.xs.items[line.xs.count - 1] + (line.end == END_LF ? 4 : 0);
+                DrawRectangle(x, y, w, line_height, style.selection_color);
+            }
+        } while (line.y + line_height + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
+    } else do for (size_t i = 0; i < line.count; i++) {
+        // draw only text
+        draw_char(style, box->codepoints[line.offset + i], box->x + line.xs.items[i], line.y + box->scroll_y, style.text_color);
+    } while (line.y + line_height + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
     line_destroy(line);
-    if (cursor != NULL) { // draw after text so it's on top and currently text isn't rendered with transparent background
-        draw_selection(*box, style, cursor);
-        if (pos.y + box->scroll_y >= box->y && pos.y + box->scroll_y < box->y + box->h) {
-            DrawLineEx((Vector2) {pos.x, pos.y + box->scroll_y}, (Vector2) {pos.x, pos.y + pos.h + box->scroll_y}, 1, style.cursor_color);
-        }
+    // draw cursor. Drawn at end to layer over text and selection while avoiding raylib's rshapes which wants camera and 3D Mode.
+    if (cursor != NULL && pos.y + box->scroll_y >= box->y && pos.y + box->scroll_y < box->y + box->h) {
+        DrawLineEx((Vector2) {pos.x, pos.y + box->scroll_y}, (Vector2) {pos.x, pos.y + pos.h + box->scroll_y}, 1, style.cursor_color);
     }
 }
 

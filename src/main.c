@@ -25,7 +25,7 @@ int main(void) {
     char *text = u8"assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\n"
     "Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};\n"
     "status = texture_atlas_add_get_rect(&rect, atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);\n"
-    "assert(status == TA_OK);\n"
+    "assert(status == TA_OK);\n\n"
     "assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\n";
     // char *text = u8"\na\naaaaa\n\na\n";
     size_t len, processed_bytes;
@@ -45,8 +45,9 @@ int main(void) {
         .cursor_color = WHITE,
         .face = face,
         .line_height = 1,
-        .selection_color = (Color) { 255, 0, 0, 128 },
-        .text_color = (Color) { 0xe3, 0x88, 0x64, 0xff }
+        .selection_color = (Color) { 0xff, 0, 0, 0x60 },
+        .text_color = (Color) { 0xe3, 0x88, 0x64, 0xff },
+        .text_selected_color = (Color) { 0xe3, 0x88, 0x64, 0xff } // NOTE: Near-useless until blending is added and selection draws behind text.
     };
 
     TextBox *last_hit = NULL;
