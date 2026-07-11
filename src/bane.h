@@ -58,7 +58,7 @@ void rectmap_destroy(RectMap *map);
     } \
     void expand_##STRUCT##Array(STRUCT##Array *a) { \
         if (a->count >= a->cap) { \
-            a->cap = a->cap > 0 ? a->cap * 2 : 16; \
+            a->cap = max(a->count * 2, a->cap > 0 ? a->cap * 2 : 16); \
             a->items = realloc(a->items, sizeof(a->items[0]) * a->cap); \
             ensure(a->items != NULL); \
         }\
