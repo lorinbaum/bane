@@ -37,6 +37,13 @@ static bool line_contains(Line line, size_t offset, bool pre_wrap) {
         )
     );
 }
+static void line_copy(Line *dest, Line *src) {
+    dest->offset = src->offset;
+    dest->end = src->end;
+    dest->count = src->count;
+    dest->y = src->y;
+    copy_int_least32_t(&dest->xs, &src->xs);
+}
 
 static bool locs_overlap(CursorLoc l1, CursorLoc l2) { return l1.offset == l2.offset && l1.pre_wrap == l2.pre_wrap; }
 static bool locs_reversed(CursorLoc l1, CursorLoc l2) { return l1.offset > l2.offset || (l1.offset == l2.offset && l2.pre_wrap); }
@@ -325,12 +332,10 @@ void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting) {
     cursor->moved = true;
 }
 
-void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int_least32_t y, bool selecting) {
-    sel_deactivated(cursor, selecting);
+static void closest_line_y(TextBox box, Style style, int_least32_t y, Line *out) {
     Line lines[2] = {line_create(), line_create()};
     uint_least8_t head = 0;
     shape_line(box, style, 0, true, &lines[head]);
-    y = y - box.scroll_y;
     int_least32_t dy = abs(box.y - y), h = line_height_px(style), baseline_offset = baseline_offset_px(style.face);
     while (true) {
         int_least32_t line_top = lines[head].y - baseline_offset;
@@ -343,9 +348,88 @@ void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int
         if (!next_line(box, style, lines + head, lines + ((head + 1) % 2))) break;
         head = (head + 1) % 2;
     }
-    cursor_to_closest_x(box, lines[head], cursor, x);
+    line_copy(out, &lines[head]);
     line_destroy(lines[0]);
     line_destroy(lines[1]);
+}
+
+void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int_least32_t y, bool selecting) {
+    sel_deactivated(cursor, selecting);
+    Line line = line_create();
+    closest_line_y(box, style, y - box.scroll_y, &line);
+    cursor_to_closest_x(box, line, cursor, x);
     cursor->update_sticky_x = true;
     cursor->moved = true;
+}
+
+void cursor_page_up(TextBox box, Style style, Cursor *cursor, bool selecting) {
+    if (sel_deactivated(cursor, selecting)) cursor->loc = loc_first(cursor->loc, cursor->sel_start);
+    Line line = line_create();
+    shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
+    if (line.offset == 0) {
+        if (cursor->loc.offset == 0) cursor->update_sticky_x = true;
+        else cursor->loc.offset = 0;
+    } else {
+        update_sticky_x(box, style, cursor);
+        int_least32_t h = line_height_px(style), b = baseline_offset_px(style.face), target_y = line.y + (h - b) - box.h;
+        closest_line_y(box, style, target_y, &line);
+        if ((target_y < line.y - b || target_y >= line.y + (h - b)) && line.offset == 0) cursor->loc.offset = 0;
+        else cursor_to_closest_x(box, line, cursor, cursor->loc.sticky_x);
+    }
+    line_destroy(line);
+    cursor->moved = true;
+}
+
+void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting) {
+    if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
+    Line line = line_create();
+    shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
+    if (line.offset + line.count == box.codepoint_count) {
+        if (cursor->loc.offset == box.codepoint_count) cursor->update_sticky_x = true;
+        else cursor->loc.offset = box.codepoint_count;
+    } else {
+        update_sticky_x(box, style, cursor);
+        int_least32_t b = baseline_offset_px(style.face), target_y = line.y - b + box.h;
+        closest_line_y(box, style, target_y, &line);
+        if ((target_y < line.y - b || target_y >= line.y + (line_height_px(style) - b)) && line.offset + line.count == box.codepoint_count) {
+            cursor->loc.offset = box.codepoint_count;
+        } else cursor_to_closest_x(box, line, cursor, cursor->loc.sticky_x);
+    }
+    line_destroy(line);
+    cursor->moved = true;
+}
+
+// simplified. Following UAX #29 (https://www.unicode.org/reports/tr29/#Word_Boundaries) needs multiple large bitmaps to check Is_Alphabetic,...
+static bool is_word_boundary(uint32_t prev_cp, uint32_t cp) {
+    return (prev_cp == LF && cp == LF) || (prev_cp != LF && cp == LF) || (prev_cp != SPACE && cp == SPACE);
+}
+
+void cursor_next_word(TextBox box, Cursor *cursor, bool selecting) {
+    if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
+    if (cursor->loc.offset < box.codepoint_count) {
+        uint32_t cp, prev_cp = box.codepoints[cursor->loc.offset];
+        while (++cursor->loc.offset < box.codepoint_count) {
+            cp = box.codepoints[cursor->loc.offset];
+            if (is_word_boundary(prev_cp, cp)) break;
+            prev_cp = cp;
+        }
+    }
+    cursor->loc.pre_wrap = true;
+    cursor->moved = true;
+    cursor->update_sticky_x = true;
+}
+
+void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting) {
+    if (sel_deactivated(cursor, selecting)) cursor->loc = loc_first(cursor->loc, cursor->sel_start);
+    if (cursor->loc.offset > 0) {
+        uint32_t cp, prev_cp = box.codepoints[cursor->loc.offset - 1];
+        while (--cursor->loc.offset > 0) {
+            cp = box.codepoints[cursor->loc.offset - 1];
+            if (is_word_boundary(prev_cp, cp)) break;
+            prev_cp = cp;
+        }
+    }
+    cursor->loc.pre_wrap = false;
+    cursor->moved = true;
+    cursor->update_sticky_x = true;
 }

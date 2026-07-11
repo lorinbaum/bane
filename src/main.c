@@ -26,7 +26,7 @@ int main(void) {
     "Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};\n"
     "status = texture_atlas_add_get_rect(&rect, atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);\n"
     "assert(status == TA_OK);\n\n"
-    "assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\n";
+    "assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\na";
     // char *text = u8"\na\naaaaa\n\na\n";
     size_t len, processed_bytes;
     
@@ -58,8 +58,15 @@ int main(void) {
         ClearBackground(BLACK);
         draw_text(&textbox, style, &cursor);
         bool selecting = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) cursor_right(textbox, &cursor, selecting);
-        if (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) cursor_left(&cursor, selecting);
+        bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) {
+            if (ctrl) cursor_next_word(textbox, &cursor, selecting);
+            else cursor_right(textbox, &cursor, selecting);
+        }
+        if (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) {
+            if (ctrl) cursor_prev_word(textbox, &cursor, selecting);
+            else cursor_left(&cursor, selecting);
+        }
         if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) cursor_down(textbox, style, &cursor, selecting); 
         if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) cursor_up(textbox, style, &cursor, selecting);
         if (IsKeyPressed(KEY_HOME) || IsKeyPressedRepeat(KEY_HOME)) cursor_home(textbox, style, &cursor, selecting);
@@ -77,6 +84,8 @@ int main(void) {
             int_least32_t x = (int_least32_t) (pos.x * SCALE + 0.5), y = (int_least32_t) (pos.y * SCALE + 0.5);
             if (last_hit == &textbox) cursor_mouse(textbox, style, &cursor, x, y, true);
         }
+        if (IsKeyPressed(KEY_PAGE_UP) || IsKeyPressedRepeat(KEY_PAGE_UP)) cursor_page_up(textbox, style, &cursor, selecting);
+        if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressedRepeat(KEY_PAGE_DOWN)) cursor_page_down(textbox, style, &cursor, selecting);
         
         DrawRectangleLines(textbox.x, textbox.y, textbox.w, textbox.h, WHITE);
         EndDrawing();

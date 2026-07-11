@@ -267,5 +267,9 @@ void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int_least32_t y, bool selecting);
+void cursor_page_up(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_next_word(TextBox box, Cursor *cursor, bool selecting);
+void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting);
 
 #endif
