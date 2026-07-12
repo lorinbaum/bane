@@ -14,7 +14,7 @@ static uint32_t murmur3_finalize(uint32_t x) {
     return x;
 }
 
-RMStatus rectmap_create(RectMap *ret, uint16_t max_entries) {
+RMStatus rectmap_create(uint16_t max_entries, RectMap *ret) {
     if (max_entries == UINT16_MAX ) { return RM_MAX_SIZE_REACHED; }
     uint32_t bucket_count = (uint32_t) ceil(max_entries / RECTMAP_MAX_LOADFACTOR);
     RectMap map = (RectMap) {
@@ -29,7 +29,7 @@ RMStatus rectmap_create(RectMap *ret, uint16_t max_entries) {
     return RM_OK;
 }
 
-RMStatus rectmap_get(TextureRect *ret, RectMap map, uint32_t key) {
+RMStatus rectmap_get(RectMap map, uint32_t key, TextureRect *ret) {
     uint32_t hash = murmur3_finalize(key) % map.bucket_count;
     uint16_t offset;
     TextureRect entry;
@@ -116,7 +116,7 @@ TextureAtlas *texture_atlas_create(int max_size) {
     append_IntVec2(&texture_atlas->skyline_anchors, (IntVec2) {0, 0});
     append_IntVec2(&texture_atlas->skyline_anchors, (IntVec2) {texture_atlas->size, 0}); // sentinel
     
-    RMStatus status = rectmap_create(&texture_atlas->rects, 256);
+    RMStatus status = rectmap_create(256, &texture_atlas->rects);
     ensure(status == RM_OK);
     
     texture_atlas->image = (Image) {
@@ -144,15 +144,15 @@ void texture_atlas_destroy(TextureAtlas **texture_atlas) {
     *texture_atlas = NULL;
 }
 
-TAStatus texture_atlas_get_rect(TextureRect *return_rect, TextureAtlas *texture_atlas, uint32_t key) {
-    RMStatus status = rectmap_get(return_rect, texture_atlas->rects, key);
+TAStatus texture_atlas_get_rect(TextureAtlas *texture_atlas, uint32_t key, TextureRect *return_rect) {
+    RMStatus status = rectmap_get(texture_atlas->rects, key, return_rect);
     if (status == RM_OK) { return TA_OK; }
     else { return TA_RECT_NOT_FOUND; }
 }
 
 typedef struct { int x, y, index; } Anchor;
 
-static bool find_best_anchor(IntVec2Array *anchors, Anchor *ret, int size, int max_size, int w) {
+static bool find_best_anchor(IntVec2Array *anchors, int size, int max_size, int w, Anchor *ret) {
     Anchor best = {max_size, max_size, 0};
     IntVec2 candidate, neighbor;
     for (unsigned int i = 0; i < anchors->count - 1; i++) {
@@ -197,7 +197,7 @@ static TAStatus texture_atlas_resize(int *size, int max_size, IntVec2Array *anch
 }
 
 
-TAStatus texture_atlas_add_get_rect(TextureRect *return_rect, TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y) {
+TAStatus texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect) {
     /* Uses Skyline packing algorithm
     Assuming coordinate origin in top left corner and Y increasing downwards:
     New rectangles go to top most, left most space available.
@@ -208,7 +208,7 @@ TAStatus texture_atlas_add_get_rect(TextureRect *return_rect, TextureAtlas *text
     */
     assert(return_rect != NULL && texture_atlas != NULL);
     TextureRect rect;
-    TAStatus status = texture_atlas_get_rect(&rect, texture_atlas, key);
+    TAStatus status = texture_atlas_get_rect(texture_atlas, key, &rect);
     if (status == TA_RECT_NOT_FOUND) {
         if (image.width == 0 || image.height == 0) {
             rect = (TextureRect) {key, 0, 0, 0, 0, origin_x, origin_y};
@@ -222,7 +222,7 @@ TAStatus texture_atlas_add_get_rect(TextureRect *return_rect, TextureAtlas *text
             int old_size = texture_atlas->size;
             while (true) { // retry after resize
                 assert(texture_atlas->size <= texture_atlas->max_size);
-                found = find_best_anchor(anchors, &best, texture_atlas->size, texture_atlas->max_size, image.width);
+                found = find_best_anchor(anchors, texture_atlas->size, texture_atlas->max_size, image.width, &best);
                 if (!found || best.y+image.height > texture_atlas->size) {
                     status = texture_atlas_resize(&texture_atlas->size, texture_atlas->max_size, anchors);
                     if (status != TA_OK) { return status; }
@@ -265,7 +265,7 @@ void texture_atlas_update_texture(TextureAtlas *texture_atlas) {
 
 TAStatus texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) {
     TextureRect rect;
-    TAStatus status = texture_atlas_get_rect(&rect, texture_atlas, key);
+    TAStatus status = texture_atlas_get_rect(texture_atlas, key, &rect);
     if (status == TA_RECT_NOT_FOUND) { return status; }
     if (rect.w == 0 || rect.h == 0) { return TA_OK; } // nothing to draw
     Rectangle src = { rect.x, rect.y, rect.w, rect.h };

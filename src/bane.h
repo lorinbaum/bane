@@ -25,8 +25,8 @@ typedef struct {
     uint16_t *buckets;
 } RectMap;
 
-RMStatus rectmap_create(RectMap *ret, uint16_t max_entries);
-RMStatus rectmap_get(TextureRect *ret, RectMap map, uint32_t key);
+RMStatus rectmap_create(uint16_t max_entries, RectMap *ret);
+RMStatus rectmap_get(RectMap map, uint32_t key, TextureRect *ret);
 RMStatus rectmap_put(RectMap *map, TextureRect rect);
 void rectmap_destroy(RectMap *map);
 
@@ -151,8 +151,8 @@ TextureAtlas* texture_atlas_create(int max_size);
 void texture_atlas_destroy(TextureAtlas **texture_atlas);
 
 // Add a new rect to your texture atlas or returns existing rect if key exists already.
-TAStatus texture_atlas_add_get_rect(TextureRect *return_rect, TextureAtlas *texture_atlas, uint32_t key, Image texture, int origin_x, int origin_y);
-TAStatus texture_atlas_get_rect(TextureRect *return_rect, TextureAtlas *texture_atlas, uint32_t key);
+TAStatus texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect);
+TAStatus texture_atlas_get_rect(TextureAtlas *texture_atlas, uint32_t key, TextureRect *return_rect);
 
 void texture_atlas_update_texture(TextureAtlas *texture_atlas);
 TAStatus texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint);
