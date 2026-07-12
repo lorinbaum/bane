@@ -240,25 +240,27 @@ typedef struct {
 } TextBox;
 
 typedef struct {
-    TextureAtlas *atlas;
     FT_Face face;
     uint_least32_t line_height;
+    // NOTE: text_selected_color is near-useless until blending is added and selection draws behind text.
     Color text_color, text_selected_color, cursor_color, selection_color;
 } Style;
 
 typedef struct {
     size_t offset;
-    bool pre_wrap;
+    bool pre_wrap;          // wrapping lines have two valid position for each offset. This control whether to render before or after wrap
     int_least32_t sticky_x; // x coordinate that persists across vertical movement
 } CursorLoc;
 
 typedef struct {
     CursorLoc loc;
-    CursorLoc sel_start;
-    bool sel_active, update_sticky_x, moved;
+    CursorLoc sel_start;    // location where the selection - if any - started while loc is the cursor location (may be before or after sel_start)
+    bool sel_active;        // if false, sel_start is irrelevant
+    bool update_sticky_x;   // set to true by movement functions that change sticky_x. sticky_x is not continuously updated, only when needed
+    bool scroll_to;         // set to true to scroll to put cursor into view in next frame
 } Cursor;
 
-void draw_text(TextBox *box, Style style, Cursor *cursor);
+void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor);
 
 void cursor_right(TextBox box, Cursor *cursor, bool selecting);
 void cursor_left(Cursor *cursor, bool selecting);

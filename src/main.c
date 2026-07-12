@@ -41,13 +41,12 @@ int main(void) {
     TextBox textbox = { .x = 50, .y = 50, .w = GetScreenWidth() - 100, .h = 100, .codepoints = codepoints, .codepoint_count = len };
 
     Style style = {
-        .atlas = glyph_atlas,
         .cursor_color = WHITE,
         .face = face,
         .line_height = 1,
         .selection_color = (Color) { 0xff, 0, 0, 0x60 },
         .text_color = (Color) { 0xe3, 0x88, 0x64, 0xff },
-        .text_selected_color = (Color) { 0xe3, 0x88, 0x64, 0xff } // NOTE: Near-useless until blending is added and selection draws behind text.
+        .text_selected_color = (Color) { 0xe3, 0x88, 0x64, 0xff }
     };
 
     TextBox *last_hit = NULL;
@@ -56,7 +55,7 @@ int main(void) {
         if (IsWindowResized()) textbox.w = GetScreenWidth() - 100;
         BeginDrawing();
         ClearBackground(BLACK);
-        draw_text(&textbox, style, &cursor);
+        draw_text(&textbox, style, glyph_atlas, &cursor);
         bool selecting = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
         bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
         if (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) {

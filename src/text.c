@@ -2,13 +2,18 @@
 
 ARRAY_DEFINE(int_least32_t)
 
-typedef enum { END_WRAP = 0, END_LF = 1, END_INPUT = 2 } LineEnd;
+typedef enum {
+    END_WRAP = 0, // Cursor at line end may jump to next line if pre_wrap is false
+    END_LF = 1,   // line.xs holds one less value and cursor after \n should display in next line
+    END_INPUT = 2 // Cursor at line end does not jump to next line regardless of pre_wrap
+} LineEnd;
+
 typedef struct {
-    int_least32_tArray xs; // x coordinates of possible cursor positions relative to line start x
-    LineEnd end; // cause of line end. E.g. line ending with \n means one less entry in xs and a cursor right after \n should display in next line
-    size_t count; // codepoints in line
-    size_t offset; // codepoints[offset] is first character in line
-    int_least32_t y; // text baseline, not bounding box
+    int_least32_tArray xs;  // x offsets of possible cursor positions relative to x of left line edge
+    LineEnd end;            // cause of line end
+    size_t count;           // codepoints in line
+    size_t offset;          // codepoints[offset] is first character in line
+    int_least32_t y;        // text baseline, not bounding box
 } Line;
 
 // FOR DEBUGGING
@@ -30,10 +35,10 @@ typedef struct {
 static Line line_create() { return (Line) { .xs = create_int_least32_tArray(32) }; }
 static void line_destroy(Line line) { destroy_int_least32_tArray(&line.xs);}
 static bool line_contains(Line line, size_t offset, bool pre_wrap) {
-    size_t line_end = line.offset + line.count;
+    size_t end_offset = line.offset + line.count;
     return (offset >= line.offset &&
-        (offset < line_end ||
-            (offset == line_end && line.end != END_LF && (pre_wrap || line.end == END_INPUT))
+        (offset < end_offset ||
+            (offset == end_offset && line.end != END_LF && (pre_wrap || line.end == END_INPUT))
         )
     );
 }
@@ -54,17 +59,14 @@ static CursorLoc loc_last(CursorLoc l1, CursorLoc l2) { return locs_reversed(l1,
 static bool sel_deactivated(Cursor *cursor, bool selecting) {
     if (cursor->sel_active) cursor->sel_active = !locs_overlap(cursor->loc, cursor->sel_start);
     if (selecting) {
-        if (!cursor->sel_active) {
-            cursor->sel_active = true;
-            cursor->sel_start = cursor->loc;
-        }
+        if (!cursor->sel_active) cursor->sel_start = cursor->loc;
+        cursor->sel_active = true;
+        return false;
     } else {
-        if (cursor->sel_active) {
-            cursor->sel_active = false;
-            return true;
-        }
+        bool deactivated = cursor->sel_active;
+        cursor->sel_active = false;
+        return deactivated;
     }
-    return false;
 }
 
 // Shapes exactly one line worth of text. Only populates out's .xs, .count .end
@@ -101,38 +103,41 @@ static void shape_text(const uint32_t *codepoints, size_t max_len, FT_Face face,
 // Here it is multiplier of computed baseline-to-baseline distance.
 // Deep dive CSS: font metrics, line-height and vertical-align: https://iamvdo.me/en/blog/css-font-metrics-line-height-and-vertical-align
 static int_least32_t line_height_px(Style style) { return style.line_height * ((style.face->size->metrics.height + 32) >> 6); }
-static int_least32_t baseline_offset_px(FT_Face face) { // property not directly exposed by face object
+
+// property not directly accessible through FT_Face
+static int_least32_t baseline_offset_px(FT_Face face) {
     int_least32_t line_gap = face->size->metrics.height - (face->size->metrics.ascender - face->size->metrics.descender);
     return (face->size->metrics.ascender + (line_gap / 2) + 32) >> 6;
 }
 
-// Populates out with all attributes of Line covering the position `position, pre_wrap` in the text
-static void shape_line(TextBox box, Style style, size_t offset, bool pre_wrap, Line *out) {
-    int_least32_t line_height = line_height_px(style);
-    out->y = box.y + baseline_offset_px(style.face);
-    size_t processed = 0;
-    while (true) {
-        assert(processed <= box.codepoint_count);
-        shape_text(box.codepoints + processed, box.codepoint_count - processed, style.face, box.w, out);
-        out->offset = processed;
-        processed += out->count;
-        if (line_contains(*out, offset, pre_wrap)) break;
-        else out->y += line_height;
-    }
+static void first_line(TextBox box, FT_Face face, Line *out) {
+    out->y = box.y + baseline_offset_px(face);
+    out->offset = 0;
+    shape_text(box.codepoints, box.codepoint_count, face, box.w, out);
 }
 
-// populates out with line after in. Returns whether there is a next line. Does not modify out if there isn't a line after this!
+// populates out with line after in. Returns whether there is a line after in. If there isn't out is not modified!
+// NOTE: next_line is strongly assumed to successfully reach all valid positions in predictable system state.
+// So: if next_line is expected, a pattern like "if (!next_line) abort()" is deemed acceptable
 static bool next_line(TextBox box, Style style, Line *in, Line *out) {
     size_t new_offset = in->offset + in->count;
-    if (new_offset > box.codepoint_count || (new_offset == box.codepoint_count && in->end != END_LF)) return false; // no line after this
+    if (new_offset > box.codepoint_count || (new_offset == box.codepoint_count && in->end != END_LF)) return false; // no line after in
     out->y = in->y + line_height_px(style);
     out->offset = new_offset;
     shape_text(box.codepoints + out->offset, box.codepoint_count - new_offset, style.face, box.w, out);
     return true;
 }
 
+// Populates out with all attributes of Line covering Position(offset, pre_wrap) in the text
+static void shape_line(TextBox box, Style style, size_t offset, bool pre_wrap, Line *out) {
+    assert(offset <= box.codepoint_count);
+    first_line(box, style.face, out);
+    while (!line_contains(*out, offset, pre_wrap)) ensure(next_line(box, style, out, out));
+}
+
 static int_least32_t x_offset(Line line, size_t offset) {
-    // assumes line has an x for offset, use line_contains to check or use line from shape_line
+    // return entry from line.xs corresponding to offset. NOTE: Returned value is still be relative to line left edge.
+    // To ensure line has corresponding x, use line_contains or use lines from shape_line
     if (line.offset == offset) return 0;
     assert(offset > line.offset);
     size_t idx = offset - line.offset;
@@ -140,56 +145,43 @@ static int_least32_t x_offset(Line line, size_t offset) {
     return line.xs.items[idx];
 }
 
-typedef struct { int_least32_t x, y, h; } CursorPos;
-
-static CursorPos cursor_pos(TextBox box, Style style, const Cursor *cursor) {
-    assert(cursor->loc.offset <= box.codepoint_count);
-    CursorPos pos = { .x = box.x, .y = box.y, .h = line_height_px(style) };
-    if (cursor->loc.offset > 0) {
-        Line line = line_create();
-        shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
-        pos.x += x_offset(line, cursor->loc.offset);
-        pos.y = line.y - baseline_offset_px(style.face);
-        line_destroy(line);
-    }
-    return pos;
-}
-
-static void draw_char(Style style, uint32_t cp, int_least32_t x, int_least32_t y, Color color) {
+static void draw_char(FT_Face face, TextureAtlas *atlas, uint32_t cp, int_least32_t x, int_least32_t y, Color color) {
     if (cp == LF || cp == SPACE) return;
-    FT_UInt glyph_index = FT_Get_Char_Index(style.face, cp);
+    FT_UInt glyph_index = FT_Get_Char_Index(face, cp);
     TextureRect rect;
-    TAStatus tastatus = texture_atlas_get_rect(&rect, style.atlas, glyph_index);
+    TAStatus tastatus = texture_atlas_get_rect(&rect, atlas, glyph_index);
     if (tastatus == TA_RECT_NOT_FOUND) {
-        FT_GlyphSlot slot = style.face->glyph;
-        FT_Error error = FT_Load_Glyph(style.face, glyph_index, FT_LOAD_RENDER);
+        FT_GlyphSlot slot = face->glyph;
+        FT_Error error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER);
         assert(!error);
         assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported
         Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
-        tastatus = texture_atlas_add_get_rect(&rect, style.atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);
+        tastatus = texture_atlas_add_get_rect(&rect, atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);
         assert(tastatus == TA_OK);
-        // NOTE: not unloading `Image texture` because all it would do is free the freetype bitmap buffer. not intended.
+        // NOTE: No UnloadImage(image) because all it would do is free the freetype bitmap buffer. not intended.
     }
-    tastatus = texture_atlas_draw(style.atlas, glyph_index, x, y, color);
+    tastatus = texture_atlas_draw(atlas, glyph_index, x, y, color);
     assert(tastatus == TA_OK);
 }
 
-void draw_text(TextBox *box, Style style, Cursor *cursor) {
-    // NOTE: characters aren't drawn one by one because it takes preprocessing the whole line to know where it wraps
-    CursorPos pos;
+void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) {
+    // NOTE: No clipping is performed. Characters that show partly inside the box also render outside it. Wait for WebGPU backend to fix efficiently
+    // characters aren't drawn one by one because it takes preprocessing the whole line to know where it wraps
+    Line line = line_create();
+    int_least32_t cursor_x, cursor_y, line_h = line_height_px(style), baseline_offset = baseline_offset_px(style.face);
     if (cursor != NULL) {
-        pos = cursor_pos(*box, style, cursor);
-        if (cursor->moved) { // scroll into view
-            if (pos.y + box->scroll_y < box->y) box->scroll_y = box->y - pos.y;
-            else if (pos.y + pos.h + box->scroll_y > box->y + box->h) box->scroll_y = box->y + box->h - (pos.y + pos.h);
-            cursor->moved = false;
+        shape_line(*box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
+        cursor_x = box->x + x_offset(line, cursor->loc.offset);
+        cursor_y = line.y - baseline_offset;
+        if (cursor->scroll_to) { // scroll into view
+            if (cursor_y + box->scroll_y < box->y) box->scroll_y = box->y - cursor_y;
+            else if (cursor_y + line_h + box->scroll_y > box->y + box->h) box->scroll_y = box->y + box->h - (cursor_y + line_h);
+            cursor->scroll_to = false;
         }
     }
-    Line line = line_create();
-    shape_line(*box, style, 0, true, &line); // first line
-    int_least32_t line_height = line_height_px(style), baseline_offset = baseline_offset_px(style.face);
+    first_line(*box, style.face, &line);
     // skip invisible lines
-    while (line.y - baseline_offset + line_height + box->scroll_y <= box->y) if (!next_line(*box, style, &line, &line)) return; 
+    while (line.y - baseline_offset + line_h + box->scroll_y <= box->y) if (!next_line(*box, style, &line, &line)) return; 
     if (cursor != NULL && cursor->sel_active && !locs_overlap(cursor->loc, cursor->sel_start)) {
         // draw text + selection together
         CursorLoc start, end;
@@ -199,40 +191,41 @@ void draw_text(TextBox *box, Style style, Cursor *cursor) {
             // draw text
             for (size_t i = 0; i < line.count; i++) {
                 Color color = line.offset + i >= start.offset && line.offset + i < end.offset ? style.text_selected_color : style.text_color;
-                draw_char(style, box->codepoints[line.offset + i], box->x + line.xs.items[i], line.y + box->scroll_y, color);
+                draw_char(style.face, atlas, box->codepoints[line.offset + i], box->x + line.xs.items[i], line.y + box->scroll_y, color);
             }
             // draw selection
             if (line_contains(line, start.offset, start.pre_wrap)) {
                 int_least32_t x = box->x + x_offset(line, start.offset), y = line.y - baseline_offset + box->scroll_y, w;
                 if (line_contains(line, end.offset, end.pre_wrap)) w = box->x + x_offset(line, end.offset) - x;
                 else w = box->x + line.xs.items[line.xs.count - 1] - x + (line.end == END_LF ? 4 : 0);
-                DrawRectangle(x, y, w, line_height, style.selection_color);
+                DrawRectangle(x, y, w, line_h, style.selection_color);
             } else if (line.offset + line.count > start.offset && line.offset <= end.offset) {
                 int_least32_t x = box->x, y = line.y - baseline_offset + box->scroll_y, w;
                 if (line_contains(line, end.offset, end.pre_wrap)) w = box->x + x_offset(line, end.offset) - x;
                 else w = line.xs.items[line.xs.count - 1] + (line.end == END_LF ? 4 : 0);
-                DrawRectangle(x, y, w, line_height, style.selection_color);
+                DrawRectangle(x, y, w, line_h, style.selection_color);
             }
-        } while (line.y + line_height + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
+        } while (line.y + line_h + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
     } else do for (size_t i = 0; i < line.count; i++) {
         // draw only text
-        draw_char(style, box->codepoints[line.offset + i], box->x + line.xs.items[i], line.y + box->scroll_y, style.text_color);
-    } while (line.y + line_height + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
+        draw_char(style.face, atlas, box->codepoints[line.offset + i], box->x + line.xs.items[i], line.y + box->scroll_y, style.text_color);
+    } while (line.y + line_h + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
     line_destroy(line);
     // draw cursor. Drawn at end to layer over text and selection while avoiding raylib's rshapes which wants camera and 3D Mode.
-    if (cursor != NULL && pos.y + box->scroll_y >= box->y && pos.y + box->scroll_y < box->y + box->h) {
-        DrawLineEx((Vector2) {pos.x, pos.y + box->scroll_y}, (Vector2) {pos.x, pos.y + pos.h + box->scroll_y}, 1, style.cursor_color);
+    // Wait for WebGPU backend to fix.
+    if (cursor != NULL && cursor_y + box->scroll_y >= box->y && cursor_y + box->scroll_y < box->y + box->h) {
+        DrawLineEx((Vector2) {cursor_x, cursor_y + box->scroll_y}, (Vector2) {cursor_x, cursor_y + line_h + box->scroll_y}, 1, style.cursor_color);
     }
 }
 
 void cursor_right(TextBox box, Cursor *cursor, bool selecting) {
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
     else {
-        cursor->loc.offset = min(box.codepoint_count, cursor->loc.offset + 1);
+        if (cursor->loc.offset < box.codepoint_count) cursor->loc.offset++;
         cursor->loc.pre_wrap = true;
         cursor->update_sticky_x = true;
     }
-    cursor->moved = true;
+    cursor->scroll_to = true;
 }
 
 void cursor_left(Cursor *cursor, bool selecting) {
@@ -242,15 +235,16 @@ void cursor_left(Cursor *cursor, bool selecting) {
         cursor->loc.pre_wrap = false;
         cursor->update_sticky_x = true;
     }
-    cursor->moved = true;
+    cursor->scroll_to = true;
 }
 
+// find closest entry in line.xs to x, set cursor to corresponding offset, pre_wrap
 static void cursor_to_closest_x(TextBox box, Line line, Cursor *cursor, int_least32_t x) {
     cursor->loc.offset = line.offset;
     cursor->loc.pre_wrap = false;
-    uint_least32_t d = abs(box.x - x);
+    uint_least32_t d = labs(box.x - x);
     for (size_t i = 1; i < line.xs.count; i++) { // could be binary search for speed. starts at i == 1 because line.xs.items[0] = 0
-        uint_least32_t d0 = abs(box.x + line.xs.items[i] - x);
+        uint_least32_t d0 = labs(box.x + line.xs.items[i] - x);
         if (d0 < d) {
             d = d0;
             cursor->loc.offset = line.offset + i;
@@ -259,10 +253,14 @@ static void cursor_to_closest_x(TextBox box, Line line, Cursor *cursor, int_leas
     }
 }
 
+// to call by functions that use cursor->loc.sticky_x. requires shaping lines, so only used when necessary
 static void update_sticky_x(TextBox box, Style style, Cursor *cursor) {
     if (cursor->update_sticky_x) {
-        cursor->loc.sticky_x = cursor_pos(box, style, cursor).x;
+        Line line = line_create();
+        shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
+        cursor->loc.sticky_x = box.x + x_offset(line, cursor->loc.offset);
         cursor->update_sticky_x = false;
+        line_destroy(line);
     }
 }
 
@@ -276,29 +274,28 @@ void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting) {
         else cursor_to_closest_x(box, line, cursor, cursor->loc.sticky_x);
         line_destroy(line);
     } else cursor->update_sticky_x = true;
-    cursor->moved = true;
+    cursor->scroll_to = true;
 }
 
 void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting) {
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_first(cursor->loc, cursor->sel_start);
-    update_sticky_x(box, style, cursor);
     if (cursor->loc.offset > 0) {
+        update_sticky_x(box, style, cursor);
         Line lines[2] = {line_create(), line_create()};
         uint_least8_t head = 0;
-        shape_line(box, style, 0, true, &lines[head]);
+        first_line(box, style.face, &lines[head]);
         while(!line_contains(lines[head], cursor->loc.offset, cursor->loc.pre_wrap)) {
-            bool one_more_line = next_line(box, style, lines + head, lines + ((head + 1) % 2));
-            assert(one_more_line);
+            ensure(next_line(box, style, lines + head, lines + ((head + 1) % 2)));
             head = (head + 1) % 2;
         }
         if (lines[head].offset == 0) { // no previous line
             cursor->loc.pre_wrap = false;
             cursor->loc.offset = 0;
-        } else cursor_to_closest_x(box, lines[abs(head - 1) % 2], cursor, cursor->loc.sticky_x);
+        } else cursor_to_closest_x(box, lines[labs(head - 1) % 2], cursor, cursor->loc.sticky_x);
         line_destroy(lines[0]);
         line_destroy(lines[1]);
     } else cursor->update_sticky_x = true;
-    cursor->moved = true;
+    cursor->scroll_to = true;
 }
 
 void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting) {
@@ -313,7 +310,7 @@ void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting) {
     }
     cursor->loc.pre_wrap = false;
     cursor->update_sticky_x = true;
-    cursor->moved = true;
+    cursor->scroll_to = true;
 }
 
 void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting) {
@@ -321,27 +318,28 @@ void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting) {
     if (cursor->loc.offset < box.codepoint_count) {
         Line line = line_create();
         shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
-        size_t line_end = line.offset + line.xs.count - 1;
-        if (cursor->loc.offset == line_end) {
+        size_t last_offset = line.offset + line.xs.count - 1;
+        if (cursor->loc.offset == last_offset) {
             for (; cursor->loc.offset < box.codepoint_count; cursor->loc.offset++) if (box.codepoints[cursor->loc.offset] == LF) break;
-        } else cursor->loc.offset = line_end;
+        } else cursor->loc.offset = last_offset;
         line_destroy(line);
     }
     cursor->loc.pre_wrap = true;
     cursor->update_sticky_x = true;
-    cursor->moved = true;
+    cursor->scroll_to = true;
 }
 
+// set out to line that covers or is closest to y
 static void closest_line_y(TextBox box, Style style, int_least32_t y, Line *out) {
     Line lines[2] = {line_create(), line_create()};
     uint_least8_t head = 0;
-    shape_line(box, style, 0, true, &lines[head]);
-    int_least32_t dy = abs(box.y - y), h = line_height_px(style), baseline_offset = baseline_offset_px(style.face);
+    first_line(box, style.face, &lines[head]);
+    int_least32_t dy = llabs(box.y - y), h = line_height_px(style), baseline_offset = baseline_offset_px(style.face);
     while (true) {
         int_least32_t line_top = lines[head].y - baseline_offset;
         if (y >= line_top && y < line_top + h) break;
         else {
-            int_least32_t dy1 = min(abs(line_top - y), abs(line_top + h - y));
+            int_least32_t dy1 = min(labs(line_top - y), labs(line_top + h - y));
             if (dy1 < dy) dy = dy1;
             else break; // following lines only increase distance
         }
@@ -359,7 +357,7 @@ void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int
     closest_line_y(box, style, y - box.scroll_y, &line);
     cursor_to_closest_x(box, line, cursor, x);
     cursor->update_sticky_x = true;
-    cursor->moved = true;
+    cursor->scroll_to = true;
 }
 
 void cursor_page_up(TextBox box, Style style, Cursor *cursor, bool selecting) {
@@ -377,7 +375,7 @@ void cursor_page_up(TextBox box, Style style, Cursor *cursor, bool selecting) {
         else cursor_to_closest_x(box, line, cursor, cursor->loc.sticky_x);
     }
     line_destroy(line);
-    cursor->moved = true;
+    cursor->scroll_to = true;
 }
 
 void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting) {
@@ -396,7 +394,7 @@ void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting) 
         } else cursor_to_closest_x(box, line, cursor, cursor->loc.sticky_x);
     }
     line_destroy(line);
-    cursor->moved = true;
+    cursor->scroll_to = true;
 }
 
 // simplified. Following UAX #29 (https://www.unicode.org/reports/tr29/#Word_Boundaries) needs multiple large bitmaps to check Is_Alphabetic,...
@@ -415,7 +413,7 @@ void cursor_next_word(TextBox box, Cursor *cursor, bool selecting) {
         }
     }
     cursor->loc.pre_wrap = true;
-    cursor->moved = true;
+    cursor->scroll_to = true;
     cursor->update_sticky_x = true;
 }
 
@@ -430,6 +428,6 @@ void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting) {
         }
     }
     cursor->loc.pre_wrap = false;
-    cursor->moved = true;
+    cursor->scroll_to = true;
     cursor->update_sticky_x = true;
 }
