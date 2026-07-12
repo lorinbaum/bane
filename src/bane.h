@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "raylib.h"
 #include <assert.h>
+#include <string.h>
 
 typedef struct {
 	uint32_t key; // 32 instead of 16 for easiser key generation: character keycode can be used in full
@@ -79,6 +80,11 @@ void rectmap_destroy(RectMap *map);
         for (size_t i = a->count; i > index; i--) { a->items[i] = a->items[i-1]; } \
         a->items[index] = item; \
         a->count++; \
+    }\
+    void copy_##STRUCT(STRUCT##Array *dest, STRUCT##Array *src) { \
+        dest->count = src->count; \
+        expand_##STRUCT##Array(dest); \
+        memcpy(dest->items, src->items, sizeof(src->items[0]) * src->count); \
     }
 
 // Indirection required to use __COUNTER__ and similar as argument.
@@ -121,6 +127,7 @@ typedef struct {
 } IntVec2;
 
 ARRAY_DECLARE(IntVec2)
+ARRAY_DECLARE(int_least32_t)
 
 #define DEFAULT_TEXTURE_ATLAS_SIZE 64
 #define DEFAULT_SKYLINE_ANCHOR_CAP 32
@@ -215,5 +222,56 @@ UTF8Status utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool st
 UTF8Status utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes);
 
 #define INVALID_CODEPOINT UINT32_C(0xFFFD)
+
+// TEXT
+
+#define SCALE 1.25 // HACK: known scaling on testing machine
+
+#define LF 0xA // \n
+#define SPACE 0x20
+
+#include "ft2build.h"
+#include FT_FREETYPE_H
+
+typedef struct {
+    int_least32_t x, y, w, h, scroll_y; // scroll_y gets negative when scrolling down
+    uint32_t *codepoints;
+    size_t codepoint_count;
+} TextBox;
+
+typedef struct {
+    FT_Face face;
+    uint_least32_t line_height;
+    // NOTE: text_selected_color is near-useless until blending is added and selection draws behind text.
+    Color text_color, text_selected_color, cursor_color, selection_color;
+} Style;
+
+typedef struct {
+    size_t offset;
+    bool pre_wrap;          // wrapping lines have two valid position for each offset. This control whether to render before or after wrap
+    int_least32_t sticky_x; // x coordinate that persists across vertical movement
+} CursorLoc;
+
+typedef struct {
+    CursorLoc loc;
+    CursorLoc sel_start;    // location where the selection - if any - started while loc is the cursor location (may be before or after sel_start)
+    bool sel_active;        // if false, sel_start is irrelevant
+    bool update_sticky_x;   // set to true by movement functions that change sticky_x. sticky_x is not continuously updated, only when needed
+    bool scroll_to;         // set to true to scroll to put cursor into view in next frame
+} Cursor;
+
+void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor);
+
+void cursor_right(TextBox box, Cursor *cursor, bool selecting);
+void cursor_left(Cursor *cursor, bool selecting);
+void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int_least32_t y, bool selecting);
+void cursor_page_up(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting);
+void cursor_next_word(TextBox box, Cursor *cursor, bool selecting);
+void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting);
 
 #endif

@@ -4,3 +4,6 @@
 [submodule "extern/raylib"]
 	path = extern/raylib
 	url = https://github.com/raysan5/raylib.git
+[submodule "extern/glfw"]
+	path = extern/glfw
+	url = https://github.com/glfw/glfw.git
