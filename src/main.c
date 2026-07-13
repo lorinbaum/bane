@@ -86,6 +86,16 @@ int main(void) {
         if (IsKeyPressed(KEY_PAGE_UP) || IsKeyPressedRepeat(KEY_PAGE_UP)) cursor_page_up(textbox, style, &cursor, selecting);
         if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressedRepeat(KEY_PAGE_DOWN)) cursor_page_down(textbox, style, &cursor, selecting);
         
+        float mouse_wheel_move = GetMouseWheelMove();
+        if (mouse_wheel_move) {
+            Vector2 pos = GetMousePosition();
+            int_least32_t x = (int_least32_t) (pos.x * SCALE + 0.5), y = (int_least32_t) (pos.y * SCALE + 0.5);
+            if (x >= textbox.x && x < textbox.x + textbox.w && y >= textbox.y && y < textbox.y + textbox.h) {
+                textbox.scroll_y = min(0, textbox.scroll_y + (int_least32_t) (mouse_wheel_move * 160));
+            }
+        }
+
+        
         DrawRectangleLines(textbox.x, textbox.y, textbox.w, textbox.h, WHITE);
         EndDrawing();
     }
