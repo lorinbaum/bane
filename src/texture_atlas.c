@@ -112,9 +112,9 @@ TextureAtlas *texture_atlas_create(int max_size) {
     texture_atlas->size = min(DEFAULT_TEXTURE_ATLAS_SIZE, max_size);
     texture_atlas->max_size = max_size;
     
-    texture_atlas->skyline_anchors = create_IntVec2Array(DEFAULT_SKYLINE_ANCHOR_CAP);
-    append_IntVec2(&texture_atlas->skyline_anchors, (IntVec2) {0, 0});
-    append_IntVec2(&texture_atlas->skyline_anchors, (IntVec2) {texture_atlas->size, 0}); // sentinel
+    texture_atlas->skyline_anchors = sb_create(IntVec2, DEFAULT_SKYLINE_ANCHOR_CAP);
+    sb_append(&texture_atlas->skyline_anchors, (IntVec2) {0, 0});
+    sb_append(&texture_atlas->skyline_anchors, (IntVec2) {texture_atlas->size, 0}); // sentinel
     
     RMStatus status = rectmap_create(256, &texture_atlas->rects);
     ensure(status == RM_OK);
@@ -136,7 +136,7 @@ TextureAtlas *texture_atlas_create(int max_size) {
 
 void texture_atlas_destroy(TextureAtlas **texture_atlas) {
     if (*texture_atlas == NULL) { return; }
-    destroy_IntVec2Array(&(*texture_atlas)->skyline_anchors);
+    sb_destroy(&(*texture_atlas)->skyline_anchors);
     rectmap_destroy(&(*texture_atlas)->rects);
     UnloadTexture((*texture_atlas)->texture);
     UnloadImage((*texture_atlas)->image);
@@ -152,7 +152,7 @@ TAStatus texture_atlas_get_rect(TextureAtlas *texture_atlas, uint32_t key, Textu
 
 typedef struct { int x, y, index; } Anchor;
 
-static bool find_best_anchor(IntVec2Array *anchors, int size, int max_size, int w, Anchor *ret) {
+static bool find_best_anchor(sb_IntVec2 *anchors, int size, int max_size, int w, Anchor *ret) {
     Anchor best = {max_size, max_size, 0};
     IntVec2 candidate, neighbor;
     for (unsigned int i = 0; i < anchors->count - 1; i++) {
@@ -173,25 +173,25 @@ static bool find_best_anchor(IntVec2Array *anchors, int size, int max_size, int 
     return found;
 }
 
-static void update_anchors(IntVec2Array *anchors, Anchor best, int w, int h) {
+static void update_anchors(sb_IntVec2 *anchors, Anchor best, int w, int h) {
     int latest_y;
     unsigned int next_i = best.index;
     if (anchors->items[best.index].y != best.y+h) { // anchors to the left and at same y would always be preferred anyway
-        insert_IntVec2(anchors, best.index, (IntVec2) {best.x, best.y+h});
+        sb_insert(anchors, best.index, (IntVec2) {best.x, best.y+h});
         next_i++;
     }
     do {
         latest_y = anchors->items[next_i].y;
-        delete_IntVec2(anchors, next_i);
+        sb_delete(anchors, next_i);
     } while (next_i + 1 < anchors->count && anchors->items[best.index+1].x < best.x + w); // next_i + 1 because last anchor is sentinel and mustn't be deleted.
-    if (anchors->items[best.index+1].x > best.x + w) { insert_IntVec2(anchors, next_i, (IntVec2) {best.x + w, latest_y}); }
+    if (anchors->items[best.index+1].x > best.x + w) { sb_insert(anchors, next_i, (IntVec2) {best.x + w, latest_y}); }
 }
 
-static TAStatus texture_atlas_resize(int *size, int max_size, IntVec2Array *anchors) {
+static TAStatus texture_atlas_resize(int *size, int max_size, sb_IntVec2 *anchors) {
     if (*size == max_size) { return TA_MAX_SIZE_EXCEEDED; }
     *size = min(max_size, *size * 2);
     // update or add new old sentinel
-    if (anchors->items[anchors->count-2].y != 0) { append_IntVec2(anchors, (IntVec2) {*size, 0}); }
+    if (anchors->items[anchors->count-2].y != 0) { sb_append(anchors, (IntVec2) {*size, 0}); }
     else { anchors->items[anchors->count - 1].x = *size; }
     return TA_OK;
 }
@@ -215,7 +215,7 @@ TAStatus texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, I
             rectmap_put(&texture_atlas->rects, rect);
         } else {
             Anchor best;
-            IntVec2Array *anchors = &texture_atlas->skyline_anchors; // shorthand
+            sb_IntVec2 *anchors = &texture_atlas->skyline_anchors; // shorthand
             assert(anchors->count >= 2);
             assert(texture_atlas->max_size >= image.width && image.width > 0 && texture_atlas->max_size >= image.height && image.height > 0);
             bool found;

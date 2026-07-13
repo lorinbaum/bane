@@ -1,7 +1,5 @@
 #include "bane.h"
 
-ARRAY_DEFINE(int_least32_t)
-
 typedef enum {
     END_WRAP = 0, // Cursor at line end may jump to next line if pre_wrap is false
     END_LF = 1,   // line.xs holds one less value and cursor after \n should display in next line
@@ -9,7 +7,7 @@ typedef enum {
 } LineEnd;
 
 typedef struct {
-    int_least32_tArray xs;  // x offsets of possible cursor positions relative to x of left line edge
+    sb_int_least32_t xs;  // x offsets of possible cursor positions relative to x of left line edge
     LineEnd end;            // cause of line end
     size_t count;           // codepoints in line
     size_t offset;          // codepoints[offset] is first character in line
@@ -32,8 +30,8 @@ typedef struct {
 //     printf("Line(offset=%lu, count=%lu, baseline=%i, xs.count=%lu, xs.items=%s)\n", line.offset, line.count, line.y, line.xs.count, array_str);
 // }
 
-static Line line_create() { return (Line) { .xs = create_int_least32_tArray(32) }; }
-static void line_destroy(Line line) { destroy_int_least32_tArray(&line.xs);}
+static Line line_create() { return (Line) { .xs = sb_create(int_least32_t, 32) }; }
+static void line_destroy(Line line) { sb_destroy(&line.xs);}
 static bool line_contains(Line line, size_t offset, bool pre_wrap) {
     size_t end_offset = line.offset + line.count;
     return (offset >= line.offset &&
@@ -47,7 +45,7 @@ static void line_copy(Line *dest, Line *src) {
     dest->end = src->end;
     dest->count = src->count;
     dest->y = src->y;
-    copy_int_least32_t(&dest->xs, &src->xs);
+    sb_copy(&dest->xs, &src->xs);
 }
 
 static bool locs_overlap(CursorLoc l1, CursorLoc l2) { return l1.offset == l2.offset && l1.pre_wrap == l2.pre_wrap; }
@@ -72,7 +70,7 @@ static bool sel_deactivated(Cursor *cursor, bool selecting) {
 // Shapes exactly one line worth of text. Only populates out's .xs, .count .end
 static void shape_text(const uint32_t *codepoints, size_t max_len, FT_Face face, int_least32_t w, Line *out) {
     out->xs.count = 0;
-    append_int_least32_t(&out->xs, 0);
+    sb_append(&out->xs, 0);
     out->end = END_INPUT;
     uint_least64_t pen_x = 0; // 64ths of a pixel to prevent accumulating error from adding rounded advance widths
     size_t i, last_space = 0; // last_space counts characters up to and including the most recent space
@@ -93,7 +91,7 @@ static void shape_text(const uint32_t *codepoints, size_t max_len, FT_Face face,
             out->end = END_WRAP;
             out->count = count;
             return;
-        } else append_int_least32_t(&out->xs, rounded_pen_x);
+        } else sb_append(&out->xs, rounded_pen_x);
         if (cp == SPACE) last_space = i + 1;
     }
     out->count = i;

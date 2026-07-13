@@ -30,75 +30,107 @@ RMStatus rectmap_get(RectMap map, uint32_t key, TextureRect *ret);
 RMStatus rectmap_put(RectMap *map, TextureRect rect);
 void rectmap_destroy(RectMap *map);
 
-// requires GCC or CLANG because __typeof__ not in std=c17
-#define TYPEOF __typeof__
-
-#define ARRAY_DECLARE(STRUCT) \
-    typedef struct {\
-        STRUCT *items; \
-        size_t count, cap; \
-    } STRUCT##Array; \
-    STRUCT##Array create_##STRUCT##Array(size_t cap); \
-    void destroy_##STRUCT##Array(STRUCT##Array *a); \
-    void expand_##STRUCT##Array(STRUCT##Array *a); \
-    void append_##STRUCT(STRUCT##Array *a, TYPEOF(*a->items) item); \
-    void delete_##STRUCT(STRUCT##Array *a, size_t index); \
-    void insert_##STRUCT(STRUCT##Array *a, size_t index, TYPEOF(*a->items) item);
-
-#define ARRAY_DEFINE(STRUCT) \
-    STRUCT##Array create_##STRUCT##Array(size_t cap) { \
-        STRUCT##Array ret = {malloc(cap * sizeof(STRUCT)), 0, cap}; \
-        ensure(ret.items != NULL); \
-        return ret; \
-    } \
-    void destroy_##STRUCT##Array(STRUCT##Array *a) { \
-        free(a->items); \
-        a->items = NULL; \
-        a->count = 0; \
-        a->cap = 0; \
-    } \
-    void expand_##STRUCT##Array(STRUCT##Array *a) { \
-        if (a->count >= a->cap) { \
-            a->cap = max(a->count * 2, a->cap > 0 ? a->cap * 2 : 16); \
-            a->items = realloc(a->items, sizeof(a->items[0]) * a->cap); \
-            ensure(a->items != NULL); \
-        }\
-    } \
-    void append_##STRUCT(STRUCT##Array *a, TYPEOF(*a->items) item) { \
-        expand_##STRUCT##Array(a); \
-        a->items[a->count] = item; \
-        a->count++; \
-    } \
-    void delete_##STRUCT(STRUCT##Array *a, size_t index) { \
-        assert(index < a->count); \
-        for (size_t i = index; i + 1 < a->count; i++) { a->items[i] = a->items[i+1]; } \
-        a->count--; \
-    } \
-    void insert_##STRUCT(STRUCT##Array *a, size_t index, TYPEOF(*a->items) item) { \
-        assert(index <= a->count); \
-        expand_##STRUCT##Array(a); \
-        for (size_t i = a->count; i > index; i--) { a->items[i] = a->items[i-1]; } \
-        a->items[index] = item; \
-        a->count++; \
-    }\
-    void copy_##STRUCT(STRUCT##Array *dest, STRUCT##Array *src) { \
-        dest->count = src->count; \
-        expand_##STRUCT##Array(dest); \
-        memcpy(dest->items, src->items, sizeof(src->items[0]) * src->count); \
-    }
-
 // Indirection required to use __COUNTER__ and similar as argument.
 // Inspiration from linux kernel include/linux/minmax.h
 #define ___JOIN(a, b) a##b
 #define __JOIN(a, b) ___JOIN(a, b)
 #define __UNIQUE __JOIN(_unique_, __COUNTER__)
 
+// STRETCHY BUFFERS
+
+#define sb_declare(type) typedef struct { type *items; size_t count, cap; } __JOIN(sb_, type)
+
+#define _sb_create(type, sb, cap_v, cap_k) __extension__({\
+    size_t cap_k = (cap_v); \
+    __JOIN(sb_, type) sb = { .items = malloc(cap_k * sizeof(type)), .count = 0, .cap = cap_k };\
+    ensure(sb.items != NULL);\
+    sb;})
+#define sb_create(type, cap) _sb_create(type, __UNIQUE, cap, __UNIQUE)
+
+#define _sb_destroy(sb_ptr, sb) __extension__({\
+    __auto_type sb = (sb_ptr);\
+    free(sb->items);\
+    sb->items = NULL;\
+    sb->count = 0;\
+    sb->cap = 0;})
+#define sb_destroy(sb_ptr) _sb_destroy(sb_ptr, __UNIQUE)
+
+#define _sb_get(sb_v, sb, index_v, index) __extension__({\
+    __auto_type sb = (sb_v); size_t index = (index_v);\
+    assert(index < sb.count);\
+    sb.items[index];})
+#define sb_get(sb, index) _sb_get(sb, __UNIQUE, index, __UNIQUE)
+
+#define _sb_rget(sb_v, sb, index_v, index) __extension__({\
+    __auto_type sb = (sb_v); size_t index = (index_v);\
+    assert(index <= sb.count && index > 0);\
+    sb.items[sb.count - index];})
+#define sb_rget(sb, index) _sb_rget(sb, __UNIQUE, index, __UNIQUE)
+
+#define _sb_set(sb_v, sb, index_v, index, value, ...) __extension__({\
+    __auto_type sb = (sb_v); size_t index = (index_v); __typeof__(*sb.items) value = (__VA__ARGS__);\
+    assert(index < sb.count);\
+    sb.items[index] = value;})
+#define sb_set(sb, index, ...) _sb_set(sb, __UNIQUE, index, __UNIQUE, __UNIQUE, __VA_ARGS__)
+
+#define _sb_rset(sb_v, sb, index_v, index, value, ...) __extension__({\
+    __auto_type sb = (sb_v); size_t index = (index_v); __typeof__(sb.items[0]) value = (__VA__ARGS__);\
+    assert(index <= sb.count && index > 0);\
+    sb.items[sb.count - index] = value;})
+#define sb_rset(sb, index, ...) _sb_rset(sb, __UNIQUE, index, __UNIQUE, __UNIQUE, __VA__ARGS__)
+
+#define __sb_expand(sb_ptr, sb) __extension__({\
+    __auto_type sb = (sb_ptr);\
+    if (sb->count >= sb->cap) { \
+        sb->cap = sb->count > 0 ? sb->count * 2 : 16; \
+        sb->items = realloc(sb->items, sizeof(sb->items[0]) * sb->cap); \
+        ensure(sb->items != NULL); \
+    }})
+#define _sb_expand(sb_ptr) __sb_expand(sb_ptr, __UNIQUE)
+
+#define _sb_append(sb_v, sb, value, ...) __extension__({\
+    __auto_type sb = (sb_v); __typeof__(sb->items[0]) value = (__VA_ARGS__);\
+    _sb_expand(sb);\
+    sb->items[sb->count] = value;\
+    sb->count++;})
+#define sb_append(sb_ptr, ...) _sb_append(sb_ptr, __UNIQUE, __UNIQUE, __VA_ARGS__)
+
+#define _sb_insert(sb_v, sb, index_v, index, value, ...) __extension__({\
+    __auto_type sb = (sb_v); size_t index = (index_v); __typeof__(sb->items[0]) value = (__VA_ARGS__);\
+    assert(index <= sb->count);\
+    _sb_expand(sb);\
+    memmove(sb->items + index + 1, sb->items + index, sizeof(sb->items[0]) * (sb->count - index));\
+    sb->items[index] = value;\
+    sb->count++;})
+#define sb_insert(sb_ptr, index, ...) _sb_insert(sb_ptr, __UNIQUE, index, __UNIQUE, __UNIQUE, __VA_ARGS__)
+
+#define _sb_delete(sb_ptr, sb, index_v, index) __extension__({\
+    __auto_type sb = (sb_ptr); size_t index = (index_v);\
+    assert(index < sb->count);\
+    memmove(sb->items + index, sb->items + index + 1, sizeof(sb->items[0]) * (sb->count - index - 1));\
+    sb->count--;})
+#define sb_delete(sb_ptr, index) _sb_delete(sb_ptr, __UNIQUE, index, __UNIQUE)
+
+#define _sb_copy(dest_v, dest, src_v, src) __extension__({\
+    __auto_type dest = (dest_v); __auto_type src = (src_v);\
+    assert(dest->items != src->items);\
+    if (src->cap > dest->cap) {\
+        free(dest->items);\
+        dest->items = malloc(sizeof(src->items[0]) * src->cap);\
+        ensure(dest->items != NULL);\
+        dest->cap = src->cap;\
+    }\
+    dest->count = src->count;\
+    memcpy(dest->items, src->items, sizeof(src->items[0]) * src->count);})
+#define sb_copy(sb_dest_ptr, sb_src_ptr) _sb_copy(sb_dest_ptr, __UNIQUE, sb_src_ptr, __UNIQUE)
+
+// MIN MAX
+
 #define __min(x, y, x0, y0) __extension__({ \
     __auto_type x0 = (x); \
     __auto_type y0 = (y); \
     x0 > y0 ? y0 : x0; \
 })
-
 #define min(x, y) __min(x, y, __UNIQUE, __UNIQUE)
 
 #define __max(x, y, x0, y0) __extension__({ \
@@ -106,7 +138,6 @@ void rectmap_destroy(RectMap *map);
     __auto_type y0 = (y); \
     x0 > y0 ? x0 : y0; \
 })
-
 #define max(x, y) __max(x, y, __UNIQUE, __UNIQUE)
 
 #define __between(x, lower, upper, x0, lower0, upper0) __extension__({ \
@@ -115,7 +146,6 @@ void rectmap_destroy(RectMap *map);
     __auto_type upper0 = (upper); \
     lower0 <= x0 && x0 <= upper0; \
 })
-
 #define between(x, lower, upper) __between(x, lower, upper, __UNIQUE, __UNIQUE, __UNIQUE)
 
 void ensure_fail(const char *file, int line, const char *func, const char *expr);
@@ -126,8 +156,8 @@ typedef struct {
     int y;
 } IntVec2;
 
-ARRAY_DECLARE(IntVec2)
-ARRAY_DECLARE(int_least32_t)
+sb_declare(IntVec2);
+sb_declare(int_least32_t);
 
 #define DEFAULT_TEXTURE_ATLAS_SIZE 64
 #define DEFAULT_SKYLINE_ANCHOR_CAP 32
@@ -137,7 +167,7 @@ typedef struct {
     int channels;
     int size; // texture area is square of side length "size".
     int max_size; // hardware constrained.
-    IntVec2Array skyline_anchors;
+    sb_IntVec2 skyline_anchors;
     RectMap rects;
     Image image; // Holds texture on CPU.
     Texture2D texture; // raylib texture on GPU. Used for drawing.
