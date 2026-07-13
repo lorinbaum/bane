@@ -68,16 +68,22 @@ void rectmap_destroy(RectMap *map);
 #define sb_rget(sb, index) _sb_rget(sb, __UNIQUE, index, __UNIQUE)
 
 #define _sb_set(sb_v, sb, index_v, index, value, ...) __extension__({\
-    __auto_type sb = (sb_v); size_t index = (index_v); __typeof__(*sb.items) value = (__VA__ARGS__);\
+    __auto_type sb = (sb_v); size_t index = (index_v); __typeof__(*sb.items) value = (__VA_ARGS__);\
     assert(index < sb.count);\
     sb.items[index] = value;})
 #define sb_set(sb, index, ...) _sb_set(sb, __UNIQUE, index, __UNIQUE, __UNIQUE, __VA_ARGS__)
 
 #define _sb_rset(sb_v, sb, index_v, index, value, ...) __extension__({\
-    __auto_type sb = (sb_v); size_t index = (index_v); __typeof__(sb.items[0]) value = (__VA__ARGS__);\
+    __auto_type sb = (sb_v); size_t index = (index_v); __typeof__(sb.items[0]) value = (__VA_ARGS__);\
     assert(index <= sb.count && index > 0);\
     sb.items[sb.count - index] = value;})
-#define sb_rset(sb, index, ...) _sb_rset(sb, __UNIQUE, index, __UNIQUE, __UNIQUE, __VA__ARGS__)
+#define sb_rset(sb, index, ...) _sb_rset(sb, __UNIQUE, index, __UNIQUE, __UNIQUE, __VA_ARGS__)
+
+#define _sb_rset_attr(sb_v, sb, index_v, index, attr, value, ...) __extension__({\
+    __auto_type sb = (sb_v); size_t index = (index_v); __typeof__(sb.items[0].attr) value = (__VA_ARGS__);\
+    assert(index <= sb.count && index > 0);\
+    sb.items[sb.count - index].attr = value;})
+#define sb_rset_attr(sb, index, attr, ...) _sb_rset_attr(sb, __UNIQUE, index, __UNIQUE, attr, __UNIQUE, __VA_ARGS__)
 
 #define __sb_expand(sb_ptr, sb) __extension__({\
     __auto_type sb = (sb_ptr);\

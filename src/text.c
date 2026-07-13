@@ -22,7 +22,7 @@ typedef struct {
 //         snprintf(array_str, array_str_len, "[");
 //         size_t offset = 1;
 //         for (size_t i = 0; i < line.xs.count; i++){
-//             snprintf(array_str + offset, array_str_len - offset, "%3i, ", line.xs.items[i]);
+//             snprintf(array_str + offset, array_str_len - offset, "%3i, ", sb_get(line.xs, i);
 //             offset += 5;
 //         }
 //         snprintf(array_str + array_str_len - 1, 2, "]");
@@ -140,7 +140,7 @@ static int_least32_t x_offset(Line line, size_t offset) {
     assert(offset > line.offset);
     size_t idx = offset - line.offset;
     assert(line.xs.count > idx);
-    return line.xs.items[idx];
+    return sb_get(line.xs, idx);
 }
 
 static void draw_char(FT_Face face, TextureAtlas *atlas, uint32_t cp, int_least32_t x, int_least32_t y, Color color) {
@@ -189,24 +189,24 @@ void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) {
             // draw text
             for (size_t i = 0; i < line.count; i++) {
                 Color color = line.offset + i >= start.offset && line.offset + i < end.offset ? style.text_selected_color : style.text_color;
-                draw_char(style.face, atlas, box->codepoints[line.offset + i], box->x + line.xs.items[i], line.y + box->scroll_y, color);
+                draw_char(style.face, atlas, box->codepoints[line.offset + i], box->x + sb_get(line.xs, i), line.y + box->scroll_y, color);
             }
             // draw selection
             if (line_contains(line, start.offset, start.pre_wrap)) {
                 int_least32_t x = box->x + x_offset(line, start.offset), y = line.y - baseline_offset + box->scroll_y, w;
                 if (line_contains(line, end.offset, end.pre_wrap)) w = box->x + x_offset(line, end.offset) - x;
-                else w = box->x + line.xs.items[line.xs.count - 1] - x + (line.end == END_LF ? 4 : 0);
+                else w = box->x + sb_rget(line.xs, 1) - x + (line.end == END_LF ? 4 : 0);
                 DrawRectangle(x, y, w, line_h, style.selection_color);
             } else if (line.offset + line.count > start.offset && line.offset <= end.offset) {
                 int_least32_t x = box->x, y = line.y - baseline_offset + box->scroll_y, w;
                 if (line_contains(line, end.offset, end.pre_wrap)) w = box->x + x_offset(line, end.offset) - x;
-                else w = line.xs.items[line.xs.count - 1] + (line.end == END_LF ? 4 : 0);
+                else w = sb_rget(line.xs, 1) + (line.end == END_LF ? 4 : 0);
                 DrawRectangle(x, y, w, line_h, style.selection_color);
             }
         } while (line.y + line_h + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
     } else do for (size_t i = 0; i < line.count; i++) {
         // draw only text
-        draw_char(style.face, atlas, box->codepoints[line.offset + i], box->x + line.xs.items[i], line.y + box->scroll_y, style.text_color);
+        draw_char(style.face, atlas, box->codepoints[line.offset + i], box->x + sb_get(line.xs, i), line.y + box->scroll_y, style.text_color);
     } while (line.y + line_h + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
     line_destroy(line);
     // draw cursor. Drawn at end to layer over text and selection while avoiding raylib's rshapes which wants camera and 3D Mode.
@@ -241,8 +241,8 @@ static void cursor_to_closest_x(TextBox box, Line line, Cursor *cursor, int_leas
     cursor->loc.offset = line.offset;
     cursor->loc.pre_wrap = false;
     uint_least32_t d = labs(box.x - x);
-    for (size_t i = 1; i < line.xs.count; i++) { // could be binary search for speed. starts at i == 1 because line.xs.items[0] = 0
-        uint_least32_t d0 = labs(box.x + line.xs.items[i] - x);
+    for (size_t i = 1; i < line.xs.count; i++) { // could be binary search for speed. starts at i == 1 because sb_get(line.xs, 0) = 0
+        uint_least32_t d0 = labs(box.x + sb_get(line.xs, i) - x);
         if (d0 < d) {
             d = d0;
             cursor->loc.offset = line.offset + i;

@@ -154,10 +154,10 @@ static bool find_best_anchor(sb_IntVec2 *anchors, int size, int max_size, int w,
     Anchor best = {max_size, max_size, 0};
     IntVec2 candidate, neighbor;
     for (unsigned int i = 0; i < anchors->count - 1; i++) {
-        candidate = anchors->items[i];
+        candidate = sb_get(*anchors, i);
         if (candidate.x+w > size) { break; }
         for (unsigned int j = i+1; j < anchors->count; j++) {
-            neighbor = anchors->items[j];
+            neighbor = sb_get(*anchors, j);
             if (w - (neighbor.x - candidate.x) <= 0) {
                 if (candidate.y < best.y) { best = (Anchor) {candidate.x, candidate.y, i}; }
                 break;
@@ -174,23 +174,23 @@ static bool find_best_anchor(sb_IntVec2 *anchors, int size, int max_size, int w,
 static void update_anchors(sb_IntVec2 *anchors, Anchor best, int w, int h) {
     int latest_y;
     unsigned int next_i = best.index;
-    if (anchors->items[best.index].y != best.y+h) { // anchors to the left and at same y would always be preferred anyway
+    if (sb_get(*anchors, best.index).y != best.y+h) { // anchors to the left and at same y would always be preferred anyway
         sb_insert(anchors, best.index, (IntVec2) {best.x, best.y+h});
         next_i++;
     }
     do {
-        latest_y = anchors->items[next_i].y;
+        latest_y = sb_get(*anchors, next_i).y;
         sb_delete(anchors, next_i);
-    } while (next_i + 1 < anchors->count && anchors->items[best.index+1].x < best.x + w); // next_i + 1 because last anchor is sentinel and mustn't be deleted.
-    if (anchors->items[best.index+1].x > best.x + w) { sb_insert(anchors, next_i, (IntVec2) {best.x + w, latest_y}); }
+    } while (next_i + 1 < anchors->count && sb_get(*anchors, best.index + 1).x < best.x + w); // next_i + 1 because last anchor is sentinel and mustn't be deleted.
+    if (sb_get(*anchors, best.index + 1).x > best.x + w) { sb_insert(anchors, next_i, (IntVec2) {best.x + w, latest_y}); }
 }
 
 static TaError texture_atlas_resize(int *size, int max_size, sb_IntVec2 *anchors) {
     if (*size == max_size) { return TA_MAX_SIZE_EXCEEDED; }
     *size = min(max_size, *size * 2);
     // update or add new old sentinel
-    if (anchors->items[anchors->count-2].y != 0) { sb_append(anchors, (IntVec2) {*size, 0}); }
-    else { anchors->items[anchors->count - 1].x = *size; }
+    if (sb_rget(*anchors, 2).y != 0) { sb_append(anchors, (IntVec2) {*size, 0}); }
+    else { sb_rset_attr(*anchors, 1, x, *size); }
     return TA_OK;
 }
 
