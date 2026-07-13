@@ -147,19 +147,19 @@ static void draw_char(FT_Face face, TextureAtlas *atlas, uint32_t cp, int_least3
     if (cp == LF || cp == SPACE) return;
     FT_UInt glyph_index = FT_Get_Char_Index(face, cp);
     TextureRect rect;
-    TAStatus tastatus = texture_atlas_get_rect(atlas, glyph_index, &rect);
-    if (tastatus == TA_RECT_NOT_FOUND) {
+    TaError ta_error = texture_atlas_get_rect(atlas, glyph_index, &rect);
+    if (ta_error == TA_RECT_NOT_FOUND) {
         FT_GlyphSlot slot = face->glyph;
         FT_Error error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER);
         assert(!error);
         assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported
         Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
-        tastatus = texture_atlas_add_get_rect(atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top, &rect);
-        assert(tastatus == TA_OK);
+        ta_error = texture_atlas_add_get_rect(atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top, &rect);
+        assert(!ta_error);
         // NOTE: No UnloadImage(image) because all it would do is free the freetype bitmap buffer. not intended.
     }
-    tastatus = texture_atlas_draw(atlas, glyph_index, x, y, color);
-    assert(tastatus == TA_OK);
+    ta_error = texture_atlas_draw(atlas, glyph_index, x, y, color);
+    assert(!ta_error);
 }
 
 void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) {

@@ -22,9 +22,9 @@ static bool is_valid_utf8_codepoint(uint32_t codepoint) {
 
 static bool is_continuation_byte(unsigned char c) { return between(c, 0x80, 0xBF); }
 
-typedef enum { SEQ_OK = 0, SEQ_TRUNCATED = 1, SEQ_INVALID = 2 } SEQStatus;
+typedef enum { SEQ_OK = 0, SEQ_TRUNCATED = 1, SEQ_INVALID = 2 } SeqError;
 
-static SEQStatus utf8_sequence_length(const unsigned char *str, size_t max_len, uint_least8_t *sequence_len) {
+static SeqError utf8_sequence_length(const unsigned char *str, size_t max_len, uint_least8_t *sequence_len) {
 	*sequence_len = 0;
 	for (uint_least8_t off = 0; off < 4; off++) {
 		if (between(str[0], lut[off].lower, lut[off].upper)) {
@@ -59,70 +59,70 @@ static bool utf8_codepoint_bytes(uint32_t codepoint, uint_least8_t *len) {
 	return false;
 }
 
-UTF8Status utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes) {
+Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes) {
 	if (str == NULL || out_len == NULL || processed_bytes == NULL)  { return UTF8_INVALID_ARGUMENT; }
 	*out_len = 0;
 	uint_least8_t sequence_len;
 	for (*processed_bytes = 0; *processed_bytes < in_len; *processed_bytes += sequence_len, (*out_len)++) {
-		SEQStatus seq_status = utf8_sequence_length((const unsigned char *) str + *processed_bytes, min(4U, in_len - *processed_bytes), &sequence_len);
+		SeqError seq_error = utf8_sequence_length((const unsigned char *) str + *processed_bytes, min(4U, in_len - *processed_bytes), &sequence_len);
 		// invalid sequences aren't handled here because the validation in utf8_sequence_length is incomplete. decoded codepoints could be invalid.
-		if (seq_status == SEQ_TRUNCATED) { return UTF8_TOO_SHORT; }
+		if (seq_error == SEQ_TRUNCATED) { return UTF8_TOO_SHORT; }
 	}
 	return UTF8_OK;
 }
 
-UTF8Status utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len) {
+Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len) {
 	if (str == NULL || out_len == NULL || codepoints == NULL) { return UTF8_INVALID_ARGUMENT; }
 	*out_len = 0;
-	UTF8Status status = UTF8_OK;
+	Utf8Error error = UTF8_OK;
 	uint_least8_t sequence_len;
 	for (size_t i = 0; i < in_len && *out_len < out_cap; i += sequence_len, (*out_len)++) {
 		uint32_t *codepoint = codepoints + *out_len;
 		const unsigned char *ustr = (const unsigned char *) (str + i);
-		SEQStatus seq_status = utf8_sequence_length(ustr, min(4U, in_len - i), &sequence_len);
-		if (seq_status == SEQ_OK) {
+		SeqError seq_error = utf8_sequence_length(ustr, min(4U, in_len - i), &sequence_len);
+		if (seq_error == SEQ_OK) {
 			*codepoint = ustr[0] - lut[sequence_len - 1].lower;
 			for (uint_least8_t j = 1; j < sequence_len; j++) { *codepoint = (*codepoint << 6) | (ustr[j] & 0x3F); }
-			if (*codepoint < lut[sequence_len - 1].mincp || !is_valid_utf8_codepoint(*codepoint)) { seq_status = SEQ_INVALID; }
+			if (*codepoint < lut[sequence_len - 1].mincp || !is_valid_utf8_codepoint(*codepoint)) { seq_error = SEQ_INVALID; }
 		}
-		if (seq_status == SEQ_TRUNCATED) { return UTF8_TOO_SHORT; }
-		else if (seq_status == SEQ_INVALID) {
-			status = UTF8_INVALID;
-			if (strict) { return status; }
+		if (seq_error == SEQ_TRUNCATED) { return UTF8_TOO_SHORT; }
+		else if (seq_error == SEQ_INVALID) {
+			error = UTF8_INVALID;
+			if (strict) { return error; }
 			*codepoint = INVALID_CODEPOINT;
 		}
 	}
-	return status;
+	return error;
 }
 
-UTF8Status utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool strict, size_t *out_len) {
+Utf8Error utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool strict, size_t *out_len) {
 	if (codepoints == NULL || out_len == NULL) { return UTF8_INVALID_ARGUMENT; }
 	*out_len = 0;
-	UTF8Status status = UTF8_OK;
+	Utf8Error error = UTF8_OK;
 	uint_least8_t sequence_len;
 	for (size_t i = 0; i < in_len; i++, *out_len += sequence_len) {
 		if (!utf8_codepoint_bytes(codepoints[i], &sequence_len)) {
-			status = UTF8_INVALID;
-			if (strict) { return status; }
+			error = UTF8_INVALID;
+			if (strict) { return error; }
 		}
 	}
-	return status;
+	return error;
 }
 
-UTF8Status utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len) {
+Utf8Error utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len) {
 	if (str == NULL || codepoints == NULL || out_len == NULL || out_cap < 1 ) { return UTF8_INVALID_ARGUMENT; } // outcap >= 1 because at least space for '\0'
 	*out_len = 0;
-	UTF8Status status = UTF8_OK;
+	Utf8Error error = UTF8_OK;
 	uint_least8_t sequence_len;
 	for (size_t i = 0; i < in_len; i++, *out_len += sequence_len) {
 		uint32_t codepoint = codepoints[i];
 		bool valid = utf8_codepoint_bytes(codepoint, &sequence_len);
 		if (sequence_len > min(4U, out_cap - 1 - *out_len)) {
-			status = UTF8_TOO_SHORT;
+			error = UTF8_TOO_SHORT;
 			goto terminate;
 		}
 		if (!valid) {
-			status = UTF8_INVALID;
+			error = UTF8_INVALID;
 			if (strict) { goto terminate; }
 			codepoint = INVALID_CODEPOINT;
 		}
@@ -136,5 +136,5 @@ UTF8Status utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, s
 	}
 terminate:
 	str[*out_len] = '\0';
-	return status;
+	return error;
 }

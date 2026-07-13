@@ -31,7 +31,7 @@ static const struct {
 	size_t len;            	// length of UTF-8 byte sequence
 	size_t exp_len;        	// expected codepoint length returned 
 	uint_least32_t *exp_cp; // expected codepoint returned
-	UTF8Status exp_status;
+	Utf8Error exp_error;
 } decoder_test[] = {
 	{ // empty sequence
 		.i = 0,
@@ -39,7 +39,7 @@ static const struct {
 		.len = 0,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_OK
+		.exp_error = UTF8_OK
 	},
 	{ // NULL str
 		.i = 1,
@@ -47,7 +47,7 @@ static const struct {
 		.len = 0,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_INVALID_ARGUMENT
+		.exp_error = UTF8_INVALID_ARGUMENT
 	},
 	{ // invalid lead byte
 		.i = 2,
@@ -55,7 +55,7 @@ static const struct {
 		.len = 1,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // valid 1-byte sequence
 		.i = 3,
@@ -63,7 +63,7 @@ static const struct {
 		.len = 1,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0x1 },
-		.exp_status = UTF8_OK
+		.exp_error = UTF8_OK
 	},
 	{ // valid 2-byte sequence
 		.i = 4,
@@ -71,7 +71,7 @@ static const struct {
 		.len = 2,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0xFF },
-		.exp_status = UTF8_OK
+		.exp_error = UTF8_OK
 	},
 	{ // invalid 2-byte sequence (second byte missing)
 		.i = 5,
@@ -79,7 +79,7 @@ static const struct {
 		.len = 1,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 2-byte sequence (second byte malformed)
 		.i = 6,
@@ -87,7 +87,7 @@ static const struct {
 		.len = 2,
 		.exp_len = 2,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT, INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid 2-byte sequence (overlong encoded)
 		.i = 7,
@@ -95,7 +95,7 @@ static const struct {
 		.len = 2,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // valid 3-byte sequence
 		.i = 8,
@@ -103,7 +103,7 @@ static const struct {
 		.len = 3,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0xFFF },
-		.exp_status = UTF8_OK
+		.exp_error = UTF8_OK
 	},
 	{ // invalid 3-byte sequence (second byte missing)
 		.i = 9,
@@ -111,7 +111,7 @@ static const struct {
 		.len = 1,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 3-byte sequence (second byte malformed)
 		.i = 10,
@@ -119,7 +119,7 @@ static const struct {
 		.len = 3,
 		.exp_len = 3,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT, 0x7F, INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid 3-byte sequence (short string, second byte malformed)
 		.i = 11,
@@ -127,7 +127,7 @@ static const struct {
 		.len = 2,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 3-byte sequence (third byte missing)
 		.i = 12,
@@ -135,7 +135,7 @@ static const struct {
 		.len = 2,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 3-byte sequence (third byte malformed)
 		.i = 13,
@@ -143,7 +143,7 @@ static const struct {
 		.len = 3,
 		.exp_len = 2,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT, 0x7F },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid 3-byte sequence (overlong encoded)
 		.i = 14,
@@ -151,7 +151,7 @@ static const struct {
 		.len = 3,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid 3-byte sequence (UTF-16 surrogate half)
 		.i = 15,
@@ -159,7 +159,7 @@ static const struct {
 		.len = 3,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // valid 4-byte sequence
 		.i = 16,
@@ -167,7 +167,7 @@ static const struct {
 		.len = 4,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0xFFFFF },
-		.exp_status = UTF8_OK
+		.exp_error = UTF8_OK
 	},
 	{ // invalid 4-byte sequence (second byte missing)
 		.i = 17,
@@ -175,7 +175,7 @@ static const struct {
 		.len = 1,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 4-byte sequence (second byte malformed)
 		.i = 18,
@@ -183,7 +183,7 @@ static const struct {
 		.len = 4,
 		.exp_len = 4,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT, 0x7F, INVALID_CODEPOINT, INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid 4-byte sequence (short string 1, second byte malformed)
 		.i = 19,
@@ -191,7 +191,7 @@ static const struct {
 		.len = 2,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 4-byte sequence (short string 2, second byte malformed)
 		.i = 20,
@@ -199,7 +199,7 @@ static const struct {
 		.len = 3,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 4-byte sequence (third byte missing)
 		.i = 21,
@@ -207,7 +207,7 @@ static const struct {
 		.len = 2,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 4-byte sequence (third byte malformed)
 		.i = 22,
@@ -215,7 +215,7 @@ static const struct {
 		.len = 4,
 		.exp_len = 3,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT, 0x7F, INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid 4-byte sequence (short string, third byte malformed)
 		.i = 23,
@@ -223,7 +223,7 @@ static const struct {
 		.len = 3,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 4-byte sequence (fourth byte missing)
 		.i = 24,
@@ -231,7 +231,7 @@ static const struct {
 		.len = 3,
 		.exp_len = 0,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0 },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	},
 	{ // invalid 4-byte sequence (fourth byte malformed)
 		.i = 25,
@@ -239,7 +239,7 @@ static const struct {
 		.len = 4,
 		.exp_len = 2,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT, 0x7F },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid 4-byte sequence (overlong encoded)
 		.i = 26,
@@ -247,7 +247,7 @@ static const struct {
 		.len = 4,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid 4-byte sequence (UTF-16-unrepresentable)
 		.i = 27,
@@ -255,7 +255,7 @@ static const struct {
 		.len = 4,
 		.exp_len = 1,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid sequence, only continuation bytes
 		.i = 27,
@@ -263,7 +263,7 @@ static const struct {
 		.len = 7,
 		.exp_len = 7,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { INVALID_CODEPOINT, INVALID_CODEPOINT, INVALID_CODEPOINT, INVALID_CODEPOINT, INVALID_CODEPOINT, INVALID_CODEPOINT, INVALID_CODEPOINT },
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // valid 10 bytes followed invalid 2-byte sequence (second byte missing)
 		.i = 28,
@@ -271,7 +271,7 @@ static const struct {
 		.len = 11,
 		.exp_len = 10,
 		.exp_cp = (uint_least32_t *)(uint_least32_t[]) { 0x5E, 0x5E, 0x5E, 0x5E, 0x5E, 0x5E, 0x5E, 0x5E, 0x5E, 0x5E },
-		.exp_status = UTF8_TOO_SHORT
+		.exp_error = UTF8_TOO_SHORT
 	}
 };
 
@@ -281,7 +281,7 @@ static const struct {
 	size_t len;			   // number of codepoints
 	char *exp_str;         // expected UTF-8 byte sequence
 	size_t exp_len;        // expected length of UTF-8 sequence
-	UTF8Status exp_status; // expected status
+	Utf8Error exp_error; // expected error
 } encoder_test[] = {
 	{ // invalid codepoint (UTF-16 surrogate half)
 		.i = 1,
@@ -289,7 +289,7 @@ static const struct {
 		.len = 1,
 		.exp_str = (char *)(unsigned char[]) { 0xEF, 0xBF, 0xBD },
 		.exp_len = 3,
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // invalid codepoint (UTF-16-unrepresentable)
 		.i = 2,
@@ -297,7 +297,7 @@ static const struct {
 		.len = 1,
 		.exp_str = (char *)(unsigned char[]) { 0xEF, 0xBF, 0xBD },
 		.exp_len = 3,
-		.exp_status = UTF8_INVALID
+		.exp_error = UTF8_INVALID
 	},
 	{ // codepoint encoded to a 1-byte sequence
 		.i = 3,
@@ -305,7 +305,7 @@ static const struct {
 		.len = 1,
 		.exp_str = (char *)(unsigned char[]) { 0x01 },
 		.exp_len = 1,
-		.exp_status = UTF8_OK
+		.exp_error = UTF8_OK
 	},
 	{ // codepoint encoded to a 2-byte sequence
 		.i = 4,
@@ -313,7 +313,7 @@ static const struct {
 		.len = 1,
 		.exp_str = (char *)(unsigned char[]) { 0xC3, 0xBF },
 		.exp_len = 2,
-		.exp_status = UTF8_OK
+		.exp_error = UTF8_OK
 	},
 	{ // codepoint encoded to a 3-byte sequence
 		.i = 5,
@@ -321,7 +321,7 @@ static const struct {
 		.len = 1,
 		.exp_str = (char *)(unsigned char[]) { 0xE0, 0xBF, 0xBF },
 		.exp_len = 3,
-		.exp_status = UTF8_OK
+		.exp_error = UTF8_OK
 	},
 	{ // codepoint encoded to a 4-byte sequence
 		.i = 6,
@@ -329,7 +329,7 @@ static const struct {
 		.len = 1,
 		.exp_str = (char *)(unsigned char[]) { 0xF3, 0xBF, 0xBF, 0xBF },
 		.exp_len = 4,
-		.exp_status = UTF8_OK
+		.exp_error = UTF8_OK
 	},
 };
 
@@ -343,7 +343,7 @@ int main(int argc, char *argv[]) {
 		size_t len = 0;
 		uint_least32_t cp[max_cp];
 		for (j = 0; j < max_cp; j++) { cp[j] = 0; }
-		UTF8Status status = utf8_decode(decoder_test[i].str, decoder_test[i].len, false, max_cp, cp, &len);
+		Utf8Error error = utf8_decode(decoder_test[i].str, decoder_test[i].len, false, max_cp, cp, &len);
 
 		bool cp_match = true;
 		for (j = 0; j < decoder_test[i].exp_len; j++) {
@@ -365,9 +365,9 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "%s: Failed DECODER test %lu: codepoints don't match", argv[0], decoder_test[i].i);
 			failed++;
 		}
-		if (status != decoder_test[i].exp_status) {
+		if (error != decoder_test[i].exp_error) {
 			fprintf(stderr, "%s: Failed DECODER test %lu: ", argv[0], decoder_test[i].i);
-			fprintf(stderr, "Expected status: %u, Got: %u\n", decoder_test[i].exp_status, status);
+			fprintf(stderr, "Expected error: %u, Got: %u\n", decoder_test[i].exp_error, error);
 			failed++;
 		}
 		if (!len_match) {
@@ -384,7 +384,7 @@ int main(int argc, char *argv[]) {
 		size_t len = 0;
 		char str[max_chars];
 		for (j = 0; j < max_chars; j++) { str[j] = 'u'; }
-		UTF8Status status = utf8_encode(encoder_test[i].cp, encoder_test[i].len, false, encoder_test[i].exp_len + 1, str, &len);
+		Utf8Error error = utf8_encode(encoder_test[i].cp, encoder_test[i].len, false, encoder_test[i].exp_len + 1, str, &len);
 
 		bool str_match = true;
 		for (j = 0; j < encoder_test[i].exp_len; j++) {
@@ -393,7 +393,7 @@ int main(int argc, char *argv[]) {
 
 		bool len_match = true;
 		size_t measured_len = 0;
-		UTF8Status measured_status = utf8_measure_bytes(encoder_test[i].cp, encoder_test[i].len, false, &measured_len);
+		Utf8Error measured_error = utf8_measure_bytes(encoder_test[i].cp, encoder_test[i].len, false, &measured_len);
 		len_match = len == measured_len;
 
 		if (len != encoder_test[i].exp_len) {
@@ -406,9 +406,9 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "Expected string: %s, Got: %s\n", encoder_test[i].exp_str, str);
 			failed++;
 		}
-		if (status != encoder_test[i].exp_status) {
+		if (error != encoder_test[i].exp_error) {
 			fprintf(stderr, "%s: Failed ENCODER test %lu: ", argv[0], encoder_test[i].i);
-			fprintf(stderr, "Expected status: %u, Got: %u\n", encoder_test[i].exp_status, status);
+			fprintf(stderr, "Expected error: %u, Got: %u\n", encoder_test[i].exp_error, error);
 			failed++;
 		}
 		if (!len_match) {
@@ -418,7 +418,7 @@ int main(int argc, char *argv[]) {
 		}
 		if (!len_match) {
 			fprintf(stderr, "%s: Failed ENCODER test %lu: ", argv[0], encoder_test[i].i);
-			fprintf(stderr, "Expected measured status len: %u, Got: %u\n", encoder_test[i].exp_status, measured_status);
+			fprintf(stderr, "Expected measured error len: %u, Got: %u\n", encoder_test[i].exp_error, measured_error);
 			failed++;
 		}
 		if (str[encoder_test[i].exp_len] != '\0') {

@@ -18,27 +18,27 @@ void add_dummy_rect(TextureAtlas *texture_atlas, uint32_t seed, unsigned int cou
         TextureRect rect;
         Image img = create_img(w, h);
         ImageClearBackground(&img, (Color) {gray, gray, gray, 255});
-        TAStatus status = texture_atlas_add_get_rect(texture_atlas, key, img, 0, 0, &rect);
-        assert(status == TA_OK);
+        TaError error = texture_atlas_add_get_rect(texture_atlas, key, img, 0, 0, &rect);
+        assert(!error);
         UnloadImage(img);
     }
 }
 
 void test_skyline_overlap() {
     TextureAtlas *TA = texture_atlas_create(64);
-    TAStatus status;
+    TaError error;
     TextureRect rect, comp_rect;
     unsigned int count = 400;
     add_dummy_rect(TA, 5, count);
     for (unsigned int i = 0; i < count; i++) {
-        status = texture_atlas_get_rect(TA, i, &rect);
-        assert(status == TA_OK);
+        error = texture_atlas_get_rect(TA, i, &rect);
+        assert(!error);
         assert(rect.x >= 0 && rect.x + rect.w <= TA->size);
         assert(rect.y >= 0 && rect.y + rect.h <= TA->size);
         for (unsigned int j = 0; j < count; j++) {
             if (i == j) { continue; }
-            status = texture_atlas_get_rect(TA, j, &comp_rect);
-            assert(status == TA_OK);
+            error = texture_atlas_get_rect(TA, j, &comp_rect);
+            assert(!error);
             assert(
                 comp_rect.x + comp_rect.w <= rect.x ||
                 comp_rect.x >= rect.x + rect.w      ||
@@ -83,15 +83,15 @@ void test_atlas_expand() {
     assert(TA->size == DEFAULT_TEXTURE_ATLAS_SIZE);
     const int s = DEFAULT_TEXTURE_ATLAS_SIZE / 2;
     TextureRect rect;
-    TAStatus status;
+    TaError error;
     Image img = create_img(s, s);
     for (int i = 0; i < 16; i++) {
-        status = texture_atlas_add_get_rect(TA, i, img, 0, 0, &rect);
-        assert(status == TA_OK);
+        error = texture_atlas_add_get_rect(TA, i, img, 0, 0, &rect);
+        assert(!error);
     }
     assert(TA->size == DEFAULT_TEXTURE_ATLAS_SIZE * 2);
-    status = texture_atlas_add_get_rect(TA, 16, img, 0, 0, &rect);
-    assert(status == TA_MAX_SIZE_EXCEEDED);
+    error = texture_atlas_add_get_rect(TA, 16, img, 0, 0, &rect);
+    assert(error == TA_MAX_SIZE_EXCEEDED);
     UnloadImage(img);
     texture_atlas_destroy(&TA);
 }
@@ -99,30 +99,30 @@ void test_atlas_expand() {
 void test_overhanging_rect() {
     TextureAtlas *TA = texture_atlas_create(8);
     TextureRect rect;
-    TAStatus status;
+    TaError error;
     Image img;
     
     img = create_img(8, 2);
-    status = texture_atlas_add_get_rect(TA, 0, img, 0, 0, &rect);
-    assert(status == TA_OK);
+    error = texture_atlas_add_get_rect(TA, 0, img, 0, 0, &rect);
+    assert(!error);
     assert(rect.x == 0 && rect.y == 0);
     UnloadImage(img);
     
     img = create_img(4, 2);
-    status = texture_atlas_add_get_rect(TA, 1, img, 0, 0, &rect);
-    assert(status == TA_OK);
+    error = texture_atlas_add_get_rect(TA, 1, img, 0, 0, &rect);
+    assert(!error);
     assert(rect.x == 0 && rect.y == 2);
     UnloadImage(img);
 
     img = create_img(6, 2);
-    status = texture_atlas_add_get_rect(TA, 2, img, 0, 0, &rect);
-    assert(status == TA_OK);
+    error = texture_atlas_add_get_rect(TA, 2, img, 0, 0, &rect);
+    assert(!error);
     assert(rect.x == 0 && rect.y == 4);
     UnloadImage(img);
 
     img = create_img(2, 6);
-    status = texture_atlas_add_get_rect(TA, 3, img, 0, 0, &rect);
-    assert(status == TA_OK);
+    error = texture_atlas_add_get_rect(TA, 3, img, 0, 0, &rect);
+    assert(!error);
     assert(rect.x == 6 && rect.y == 2);
     UnloadImage(img);
 
@@ -133,16 +133,16 @@ void test_same_key() {
     TextureAtlas *TA = texture_atlas_create(8);
     Image img;
     TextureRect rect;
-    TAStatus status;
+    TaError error;
 
     img = create_img(2, 2);
-    status = texture_atlas_add_get_rect(TA, 0, img, 0, 0, &rect);
-    assert(status == TA_OK);
+    error = texture_atlas_add_get_rect(TA, 0, img, 0, 0, &rect);
+    assert(!error);
     UnloadImage(img);
 
     img = create_img(4, 4);
-    status = texture_atlas_add_get_rect(TA, 0, img, 0, 0, &rect);
-    assert(status == TA_OK);
+    error = texture_atlas_add_get_rect(TA, 0, img, 0, 0, &rect);
+    assert(!error);
     assert(rect.w == 2 && rect.h == 2);
     UnloadImage(img);
     
@@ -151,16 +151,16 @@ void test_same_key() {
 
 void test_rectmap() {
     RectMap map;
-    RMStatus status;
-    status = rectmap_create(5, &map);
+    RmError error;
+    error = rectmap_create(5, &map);
     TextureRect rect;
     TextureRect rect_stored;
     for (uint16_t i = 0; i < UINT16_MAX - 1; i++) {
         rect = (TextureRect) { .key = i, .x = i + 5 };
-        status = rectmap_put(&map, rect);
-        assert(status == RM_OK);
-        status = rectmap_get(map, i, &rect_stored);
-        assert(status == RM_OK);
+        error = rectmap_put(&map, rect);
+        assert(!error);
+        error = rectmap_get(map, i, &rect_stored);
+        assert(!error);
         assert(map.used == i + 1);
         assert(map.max_entries >= i + 1);
         assert(rect_stored.key == rect.key && rect_stored.x == rect.x);
@@ -168,26 +168,26 @@ void test_rectmap() {
 
     // recheck all values because map has been resized since last checking the first ones
     for (uint32_t i = 0; i < 128; i++) {
-        status = rectmap_get(map, i, &rect_stored);
-        assert(status == RM_OK);
+        error = rectmap_get(map, i, &rect_stored);
+        assert(!error);
         assert(rect_stored.key == i && rect_stored.x == i + 5);
     }
 
     // check size boundary
     rect = (TextureRect) { .key = UINT16_MAX }; // UINT16_MAX here is just an unused key. can be whatever
-    status = rectmap_put(&map, rect);
-    assert(status == RM_MAX_SIZE_REACHED);
+    error = rectmap_put(&map, rect);
+    assert(error == RM_MAX_SIZE_REACHED);
 
     // check value update
     uint32_t key = 500;
-    status = rectmap_get(map, key, &rect_stored);
-    assert(status == RM_OK);
+    error = rectmap_get(map, key, &rect_stored);
+    assert(!error);
     rect = rect_stored;
     rect.x += 200;
-    status = rectmap_put(&map, rect);
-    assert(status == RM_OK);
-    status = rectmap_get(map, key, &rect_stored);
-    assert(status == RM_OK);
+    error = rectmap_put(&map, rect);
+    assert(!error);
+    error = rectmap_get(map, key, &rect_stored);
+    assert(!error);
     assert(rect_stored.x == rect.x);
 
     rectmap_destroy(&map);

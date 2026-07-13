@@ -14,7 +14,7 @@ typedef struct {
 } TextureRect;
 
 #define RECTMAP_MAX_LOADFACTOR 0.6
-typedef enum { RM_OK = 0, RM_MAX_SIZE_REACHED = 1, RM_KEY_NOT_FOUND = 2 } RMStatus;
+typedef enum { RM_OK = 0, RM_MAX_SIZE_REACHED = 1, RM_KEY_NOT_FOUND = 2 } RmError;
 
 // Open addressing hashmap with UINT16_MAX - 1 maximum entries
 typedef struct {
@@ -25,9 +25,9 @@ typedef struct {
     uint16_t *buckets;
 } RectMap;
 
-RMStatus rectmap_create(uint16_t max_entries, RectMap *ret);
-RMStatus rectmap_get(RectMap map, uint32_t key, TextureRect *ret);
-RMStatus rectmap_put(RectMap *map, TextureRect rect);
+RmError rectmap_create(uint16_t max_entries, RectMap *ret);
+RmError rectmap_get(RectMap map, uint32_t key, TextureRect *ret);
+RmError rectmap_put(RectMap *map, TextureRect rect);
 void rectmap_destroy(RectMap *map);
 
 // Indirection required to use __COUNTER__ and similar as argument.
@@ -174,22 +174,22 @@ typedef struct {
     bool image_changed;
 } TextureAtlas;
 
-typedef enum { TA_OK = 0, TA_MAX_SIZE_EXCEEDED = 1, TA_RECT_NOT_FOUND = 2 } TAStatus;
+typedef enum { TA_OK = 0, TA_MAX_SIZE_EXCEEDED = 1, TA_RECT_NOT_FOUND = 2 } TaError;
 
 // square packing area starts out small, then expands until it reaches a side length of max_size
 TextureAtlas* texture_atlas_create(int max_size); 
 void texture_atlas_destroy(TextureAtlas **texture_atlas);
 
 // Add a new rect to your texture atlas or returns existing rect if key exists already.
-TAStatus texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect);
-TAStatus texture_atlas_get_rect(TextureAtlas *texture_atlas, uint32_t key, TextureRect *return_rect);
+TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect);
+TaError texture_atlas_get_rect(TextureAtlas *texture_atlas, uint32_t key, TextureRect *return_rect);
 
 void texture_atlas_update_texture(TextureAtlas *texture_atlas);
-TAStatus texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint);
+TaError texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint);
 
 // UTF8
 
-typedef enum { UTF8_OK = 0, UTF8_TOO_SHORT = 1, UTF8_INVALID = 2, UTF8_INVALID_ARGUMENT = 3} UTF8Status;
+typedef enum { UTF8_OK = 0, UTF8_TOO_SHORT = 1, UTF8_INVALID = 2, UTF8_INVALID_ARGUMENT = 3} Utf8Error;
 
 /**
  * @brief Decode UTF8 string into unicode codepoints.
@@ -206,7 +206,7 @@ typedef enum { UTF8_OK = 0, UTF8_TOO_SHORT = 1, UTF8_INVALID = 2, UTF8_INVALID_A
  * @retval UTF8_TOO_SHORT in_len cuts input mid-utf8-sequence (takes priority over UTF8_INVALID if both apply).
  * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
  */
-UTF8Status utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len);
+Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len);
 
 /**
  * @brief Encode unicode codepoints as UTF8 string.
@@ -223,7 +223,7 @@ UTF8Status utf8_decode(const char *str, size_t in_len, bool strict, size_t out_c
  * @retval UTF8_TOO_SHORT out_cap cuts output mid-utf8-sequence (takes priority over UTF8_INVALID if both apply).
  * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
  */
-UTF8Status utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len);
+Utf8Error utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len);
 
 /**
  * @brief Validate codepoints and count number of bytes necessary to encode them.
@@ -237,7 +237,7 @@ UTF8Status utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, s
  * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
  * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
  */
-UTF8Status utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool strict, size_t *out_len);
+Utf8Error utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool strict, size_t *out_len);
 
 /**
  * @brief Count number of codepoints encoded in string. Does not validate input.
@@ -249,7 +249,7 @@ UTF8Status utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool st
  * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
  * @retval UTF8_TOO_SHORT in_len cuts input mid-utf8-sequence
  */
-UTF8Status utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes);
+Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes);
 
 #define INVALID_CODEPOINT UINT32_C(0xFFFD)
 
