@@ -270,9 +270,20 @@ Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_le
 #include FT_FREETYPE_H
 
 typedef struct {
+    size_t cap, gap, offset;
+    uint32_t *data;
+} GapBuffer;
+
+GapBuffer gb_create_from_text(char *text, size_t str_len);
+GapBuffer gb_create(size_t cap);
+size_t gb_count(GapBuffer gb);
+void gb_insert(GapBuffer *gb, size_t index, uint32_t value);
+void gb_delete(GapBuffer *gb, size_t index);
+uint32_t gb_get(GapBuffer gb, size_t index);
+
+typedef struct {
     int_least32_t x, y, w, h, scroll_y; // scroll_y gets negative when scrolling down
-    uint32_t *codepoints;
-    size_t codepoint_count;
+    GapBuffer gb;
 } TextBox;
 
 typedef struct {

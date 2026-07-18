@@ -68,14 +68,14 @@ static bool sel_deactivated(Cursor *cursor, bool selecting) {
 }
 
 // Shapes exactly one line worth of text. Only populates out's .xs, .count .end
-static void shape_text(const uint32_t *codepoints, size_t max_len, FT_Face face, int_least32_t w, Line *out) {
+static void shape_text(GapBuffer gb, size_t offset, FT_Face face, int_least32_t w, Line *out) {
     out->xs.count = 0;
     sb_append(&out->xs, 0);
     out->end = END_INPUT;
     uint_least64_t pen_x = 0; // 64ths of a pixel to prevent accumulating error from adding rounded advance widths
-    size_t i, last_space = 0; // last_space counts characters up to and including the most recent space
+    size_t max_len = gb_count(gb) - offset, i, last_space = 0; // last_space counts characters up to and including the most recent space
     for (i = 0; i < max_len; i++) {
-        uint32_t cp = codepoints[i];
+        uint32_t cp = gb_get(gb, offset + i);
         if (cp == LF) {
             out->count = i + 1;
             out->end = END_LF;
@@ -111,7 +111,7 @@ static int_least32_t baseline_offset_px(FT_Face face) {
 static void first_line(TextBox box, FT_Face face, Line *out) {
     out->y = box.y + baseline_offset_px(face);
     out->offset = 0;
-    shape_text(box.codepoints, box.codepoint_count, face, box.w, out);
+    shape_text(box.gb, 0, face, box.w, out);
 }
 
 // populates out with line after in. Returns whether there is a line after in. If there isn't out is not modified!
@@ -119,16 +119,16 @@ static void first_line(TextBox box, FT_Face face, Line *out) {
 // So: if next_line is expected, a pattern like "if (!next_line) abort()" is deemed acceptable
 static bool next_line(TextBox box, Style style, Line *in, Line *out) {
     size_t new_offset = in->offset + in->count;
-    if (new_offset > box.codepoint_count || (new_offset == box.codepoint_count && in->end != END_LF)) return false; // no line after in
+    if (new_offset > gb_count(box.gb) || (new_offset == gb_count(box.gb) && in->end != END_LF)) return false; // no line after in
     out->y = in->y + line_height_px(style);
     out->offset = new_offset;
-    shape_text(box.codepoints + out->offset, box.codepoint_count - new_offset, style.face, box.w, out);
+    shape_text(box.gb, out->offset, style.face, box.w, out);
     return true;
 }
 
 // Populates out with all attributes of Line covering Position(offset, pre_wrap) in the text
 static void shape_line(TextBox box, Style style, size_t offset, bool pre_wrap, Line *out) {
-    assert(offset <= box.codepoint_count);
+    assert(offset <= gb_count(box.gb));
     first_line(box, style.face, out);
     while (!line_contains(*out, offset, pre_wrap)) ensure(next_line(box, style, out, out));
 }
@@ -189,7 +189,7 @@ void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) {
             // draw text
             for (size_t i = 0; i < line.count; i++) {
                 Color color = line.offset + i >= start.offset && line.offset + i < end.offset ? style.text_selected_color : style.text_color;
-                draw_char(style.face, atlas, box->codepoints[line.offset + i], box->x + sb_get(line.xs, i), line.y + box->scroll_y, color);
+                draw_char(style.face, atlas, gb_get(box->gb, line.offset + i), box->x + sb_get(line.xs, i), line.y + box->scroll_y, color);
             }
             // draw selection
             if (line_contains(line, start.offset, start.pre_wrap)) {
@@ -206,7 +206,7 @@ void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) {
         } while (line.y + line_h + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
     } else do for (size_t i = 0; i < line.count; i++) {
         // draw only text
-        draw_char(style.face, atlas, box->codepoints[line.offset + i], box->x + sb_get(line.xs, i), line.y + box->scroll_y, style.text_color);
+        draw_char(style.face, atlas, gb_get(box->gb, line.offset + i), box->x + sb_get(line.xs, i), line.y + box->scroll_y, style.text_color);
     } while (line.y + line_h + box->scroll_y < box->y + box->h && next_line(*box, style, &line, &line));
     line_destroy(line);
     // draw cursor. Drawn at end to layer over text and selection while avoiding raylib's rshapes which wants camera and 3D Mode.
@@ -219,7 +219,7 @@ void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) {
 void cursor_right(TextBox box, Cursor *cursor, bool selecting) {
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
     else {
-        if (cursor->loc.offset < box.codepoint_count) cursor->loc.offset++;
+        if (cursor->loc.offset < gb_count(box.gb)) cursor->loc.offset++;
         cursor->loc.pre_wrap = true;
         cursor->update_sticky_x = true;
     }
@@ -264,7 +264,7 @@ static void update_sticky_x(TextBox box, Style style, Cursor *cursor) {
 
 void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting) {
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
-    if (cursor->loc.offset < box.codepoint_count) {
+    if (cursor->loc.offset < gb_count(box.gb)) {
         update_sticky_x(box, style, cursor);
         Line line = line_create();
         shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
@@ -302,7 +302,7 @@ void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting) {
         Line line = line_create();
         shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
         if (cursor->loc.offset == line.offset) {
-            for (; cursor->loc.offset > 0; cursor->loc.offset--) if (box.codepoints[cursor->loc.offset - 1] == LF) break;
+            for (; cursor->loc.offset > 0; cursor->loc.offset--) if (gb_get(box.gb, cursor->loc.offset - 1) == LF) break;
         } else cursor->loc.offset = line.offset;
         line_destroy(line);
     }
@@ -313,12 +313,12 @@ void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting) {
 
 void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting) {
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
-    if (cursor->loc.offset < box.codepoint_count) {
+    if (cursor->loc.offset < gb_count(box.gb)) {
         Line line = line_create();
         shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
         size_t last_offset = line.offset + line.xs.count - 1;
         if (cursor->loc.offset == last_offset) {
-            for (; cursor->loc.offset < box.codepoint_count; cursor->loc.offset++) if (box.codepoints[cursor->loc.offset] == LF) break;
+            for (; cursor->loc.offset < gb_count(box.gb); cursor->loc.offset++) if (gb_get(box.gb, cursor->loc.offset) == LF) break;
         } else cursor->loc.offset = last_offset;
         line_destroy(line);
     }
@@ -380,15 +380,15 @@ void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting) 
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
     Line line = line_create();
     shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
-    if (line.offset + line.count == box.codepoint_count) {
-        if (cursor->loc.offset == box.codepoint_count) cursor->update_sticky_x = true;
-        else cursor->loc.offset = box.codepoint_count;
+    if (line.offset + line.count == gb_count(box.gb)) {
+        if (cursor->loc.offset == gb_count(box.gb)) cursor->update_sticky_x = true;
+        else cursor->loc.offset = gb_count(box.gb);
     } else {
         update_sticky_x(box, style, cursor);
         int_least32_t b = baseline_offset_px(style.face), target_y = line.y - b + box.h;
         closest_line_y(box, style, target_y, &line);
-        if ((target_y < line.y - b || target_y >= line.y + (line_height_px(style) - b)) && line.offset + line.count == box.codepoint_count) {
-            cursor->loc.offset = box.codepoint_count;
+        if ((target_y < line.y - b || target_y >= line.y + (line_height_px(style) - b)) && line.offset + line.count == gb_count(box.gb)) {
+            cursor->loc.offset = gb_count(box.gb);
         } else cursor_to_closest_x(box, line, cursor, cursor->loc.sticky_x);
     }
     line_destroy(line);
@@ -402,10 +402,10 @@ static bool is_word_boundary(uint32_t prev_cp, uint32_t cp) {
 
 void cursor_next_word(TextBox box, Cursor *cursor, bool selecting) {
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_last(cursor->loc, cursor->sel_start);
-    if (cursor->loc.offset < box.codepoint_count) {
-        uint32_t cp, prev_cp = box.codepoints[cursor->loc.offset];
-        while (++cursor->loc.offset < box.codepoint_count) {
-            cp = box.codepoints[cursor->loc.offset];
+    if (cursor->loc.offset < gb_count(box.gb)) {
+        uint32_t cp, prev_cp = gb_get(box.gb, cursor->loc.offset);
+        while (++cursor->loc.offset < gb_count(box.gb)) {
+            cp = gb_get(box.gb, cursor->loc.offset);
             if (is_word_boundary(prev_cp, cp)) break;
             prev_cp = cp;
         }
@@ -418,9 +418,9 @@ void cursor_next_word(TextBox box, Cursor *cursor, bool selecting) {
 void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting) {
     if (sel_deactivated(cursor, selecting)) cursor->loc = loc_first(cursor->loc, cursor->sel_start);
     if (cursor->loc.offset > 0) {
-        uint32_t cp, prev_cp = box.codepoints[cursor->loc.offset - 1];
+        uint32_t cp, prev_cp = gb_get(box.gb, cursor->loc.offset - 1);
         while (--cursor->loc.offset > 0) {
-            cp = box.codepoints[cursor->loc.offset - 1];
+            cp = gb_get(box.gb, cursor->loc.offset - 1);
             if (is_word_boundary(prev_cp, cp)) break;
             prev_cp = cp;
         }
@@ -428,4 +428,65 @@ void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting) {
     cursor->loc.pre_wrap = false;
     cursor->scroll_to = true;
     cursor->update_sticky_x = true;
+}
+
+GapBuffer gb_create(size_t cap) {
+    GapBuffer gb = {.cap = cap, .gap = cap, .offset = 0, .data = malloc(sizeof(uint32_t) * cap)};
+    ensure(gb.data != NULL);
+    return gb;
+}
+
+GapBuffer gb_create_from_text(char *text, size_t str_len) {
+    assert(text != NULL && str_len > 0);
+    size_t len, processed_bytes;
+    Utf8Error error = utf8_measure_codepoints(text, str_len, &len, &processed_bytes);
+    ensure(!error);
+    ensure(len * 2 > len);
+    GapBuffer gb = gb_create(len * 2);
+    size_t decoded;
+    error = utf8_decode(text, str_len, true, len, gb.data, &decoded);
+    ensure(!error);
+    gb.offset = len;
+    gb.gap = len;
+    return gb;
+}
+
+static void gb_move_gap(GapBuffer *gb, size_t index) {
+    assert(index <= gb_count(*gb));
+    if (index < gb->offset) memmove(gb->data + index + gb->gap, gb->data + index, sizeof(uint32_t) * (gb->offset - index));
+    else if (index > gb->offset) memmove(gb->data + gb->offset, gb->data + gb->gap + gb->offset, sizeof(uint32_t) * (index - gb->offset));
+    gb->offset = index;
+}
+
+size_t gb_count(GapBuffer gb) { return gb.cap - gb.gap; }
+
+void gb_insert(GapBuffer *gb, size_t index, uint32_t value) {
+    assert(index <= gb_count(*gb));
+    if (!gb->gap) {
+        size_t new_cap = gb->cap > 0 ? gb->cap * 2 : 16;
+        ensure(new_cap > gb->cap); // overflow
+        gb->gap = new_cap - gb->cap;
+        gb->offset = gb->cap;
+        gb->cap = new_cap;
+        gb->data = realloc(gb->data, sizeof(uint32_t) * gb->cap);;
+        ensure(gb->data != NULL);
+    }
+    gb_move_gap(gb, index);
+    gb->data[index] = value;
+    gb->offset++;
+    gb->gap--;
+}
+
+void gb_delete(GapBuffer *gb, size_t index) {
+    assert(index < gb_count(*gb));
+    if (index != gb->offset) {
+        gb_move_gap(gb, index + 1);
+        gb->offset--;
+    }
+    gb->gap++;
+}
+
+uint32_t gb_get(GapBuffer gb, size_t index) {
+    assert(index < gb_count(gb));
+    return gb.data[index >= gb.offset ? index + gb.gap : index];
 }
