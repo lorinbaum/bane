@@ -81,6 +81,18 @@ int main(void) {
         if (IsKeyPressed(KEY_PAGE_UP) || IsKeyPressedRepeat(KEY_PAGE_UP)) cursor_page_up(textbox, style, &cursor, selecting);
         if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressedRepeat(KEY_PAGE_DOWN)) cursor_page_down(textbox, style, &cursor, selecting);
         
+        if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) cursor_backspace(&textbox, &cursor);
+        if (IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) cursor_delete(&textbox, &cursor);
+
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressedRepeat(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressedRepeat(KEY_KP_ENTER)) {
+            cursor_write(&textbox, &cursor, LF);
+        }
+        uint32_t c = GetCharPressed();
+        while (c) {
+            cursor_write(&textbox, &cursor, c);
+            c = GetCharPressed();
+        }
+
         float mouse_wheel_move = GetMouseWheelMove();
         if (mouse_wheel_move) {
             Vector2 pos = GetMousePosition();

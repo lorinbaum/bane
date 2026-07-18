@@ -322,4 +322,8 @@ void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_next_word(TextBox box, Cursor *cursor, bool selecting);
 void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting);
 
+void cursor_write(TextBox *box, Cursor *cursor, uint32_t c);
+void cursor_backspace(TextBox *box, Cursor *cursor);
+void cursor_delete(TextBox *box, Cursor *cursor);
+
 #endif

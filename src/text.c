@@ -430,6 +430,35 @@ void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting) {
     cursor->update_sticky_x = true;
 }
 
+static void sel_delete(GapBuffer *gb, Cursor *cursor) {
+    size_t n;
+    if (locs_reversed(cursor->loc, cursor->sel_start)) {
+        n = cursor->loc.offset - cursor->sel_start.offset;
+        cursor->loc = cursor->sel_start;
+    } else n = cursor->sel_start.offset - cursor->loc.offset;
+    gb_delete_n(gb, cursor->loc.offset, n);
+    cursor->sel_active = false;
+}
+
+void cursor_write(TextBox *box, Cursor *cursor, uint32_t c) {
+    if (cursor->sel_active) sel_delete(&box->gb, cursor);
+    gb_insert(&box->gb, cursor->loc.offset, c);
+    cursor_right(*box, cursor, false);
+}
+
+void cursor_backspace(TextBox *box, Cursor *cursor) {
+    if (cursor->sel_active) sel_delete(&box->gb, cursor);
+    else if (cursor->loc.offset > 0) {
+        gb_delete_n(&box->gb, cursor->loc.offset - 1, 1);
+        cursor_left(cursor, false);
+    }
+}
+
+void cursor_delete(TextBox *box, Cursor *cursor) {
+    if (cursor->sel_active) sel_delete(&box->gb, cursor);
+    else if (cursor->loc.offset < gb_count(box->gb)) gb_delete_n(&box->gb, cursor->loc.offset, 1);
+}
+
 GapBuffer gb_create(size_t cap) {
     GapBuffer gb = {.cap = cap, .gap = cap, .offset = 0, .data = malloc(sizeof(uint32_t) * cap)};
     ensure(gb.data != NULL);
@@ -483,7 +512,7 @@ void gb_insert_n(GapBuffer *gb, size_t index, uint32_t *values, size_t n) {
     assert(index <= gb_count(*gb));
     if (gb->gap < n) {
         gb_move_gap(gb, gb_count(*gb)); // ensure gap is contiguous after realloc
-        size_t new_cap = max(max(16, gb->cap * 2), gb->cap + n);
+        size_t new_cap = max(max(16u, gb->cap * 2), gb->cap + n);
         ensure(new_cap > gb->cap);
         gb->gap = new_cap - gb->cap + gb->gap;
         gb->cap = new_cap;
