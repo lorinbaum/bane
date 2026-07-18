@@ -278,7 +278,8 @@ GapBuffer gb_create_from_text(char *text, size_t str_len);
 GapBuffer gb_create(size_t cap);
 size_t gb_count(GapBuffer gb);
 void gb_insert(GapBuffer *gb, size_t index, uint32_t value);
-void gb_delete(GapBuffer *gb, size_t index);
+void gb_insert_n(GapBuffer *gb, size_t index, uint32_t *values, size_t n);
+void gb_delete_n(GapBuffer *gb, size_t index, size_t n);
 uint32_t gb_get(GapBuffer gb, size_t index);
 
 typedef struct {

@@ -477,13 +477,33 @@ void gb_insert(GapBuffer *gb, size_t index, uint32_t value) {
     gb->gap--;
 }
 
-void gb_delete(GapBuffer *gb, size_t index) {
-    assert(index < gb_count(*gb));
-    if (index != gb->offset) {
-        gb_move_gap(gb, index + 1);
-        gb->offset--;
+void gb_insert_n(GapBuffer *gb, size_t index, uint32_t *values, size_t n) {
+    if (n == 0) return;
+    assert(values != NULL);
+    assert(index <= gb_count(*gb));
+    if (gb->gap < n) {
+        gb_move_gap(gb, gb_count(*gb)); // ensure gap is contiguous after realloc
+        size_t new_cap = max(max(16, gb->cap * 2), gb->cap + n);
+        ensure(new_cap > gb->cap);
+        gb->gap = new_cap - gb->cap + gb->gap;
+        gb->cap = new_cap;
+        gb->data = realloc(gb->data, sizeof(uint32_t) * gb->cap);
+        ensure(gb->data != NULL);
     }
-    gb->gap++;
+    gb_move_gap(gb, index);
+    memmove(gb->data + gb->offset, values, sizeof(uint32_t) * n);
+    gb->offset = index + n;
+    gb->gap -= n;
+}
+
+void gb_delete_n(GapBuffer *gb, size_t index, size_t n) {
+    if (n == 0) return;
+    assert(index + n <= gb_count(*gb));
+    if (index != gb->offset) {
+        gb_move_gap(gb, index + n);
+        gb->offset -= n;
+    }
+    gb->gap += n;
 }
 
 uint32_t gb_get(GapBuffer gb, size_t index) {
