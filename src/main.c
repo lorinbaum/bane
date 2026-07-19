@@ -80,6 +80,9 @@ int main(void) {
         }
         if (IsKeyPressed(KEY_PAGE_UP) || IsKeyPressedRepeat(KEY_PAGE_UP)) cursor_page_up(textbox, style, &cursor, selecting);
         if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressedRepeat(KEY_PAGE_DOWN)) cursor_page_down(textbox, style, &cursor, selecting);
+
+        if (IsKeyPressed(KEY_C) && ctrl) cursor_copy(textbox, cursor);
+        if ((IsKeyPressed(KEY_V) || IsKeyPressedRepeat(KEY_V)) && ctrl) cursor_paste(&textbox, &cursor);
         
         if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) cursor_backspace(&textbox, &cursor);
         if (IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) cursor_delete(&textbox, &cursor);
@@ -109,6 +112,7 @@ int main(void) {
 
     // ExportImage(glyph_atlas->image, "glyph_atlas.jpg");
     
+    gb_destroy(&textbox.gb);
     texture_atlas_destroy(&glyph_atlas);
     CloseWindow();
     FT_Done_Face(face);

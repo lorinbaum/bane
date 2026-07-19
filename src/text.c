@@ -450,13 +450,42 @@ void cursor_backspace(TextBox *box, Cursor *cursor) {
     if (cursor->sel_active) sel_delete(&box->gb, cursor);
     else if (cursor->loc.offset > 0) {
         gb_delete_n(&box->gb, cursor->loc.offset - 1, 1);
-        cursor_left(cursor, false);
+        cursor->loc.offset--;
+        cursor->update_sticky_x = true;
+        cursor->loc.pre_wrap = false;
     }
+    cursor->scroll_to = true;
 }
 
 void cursor_delete(TextBox *box, Cursor *cursor) {
     if (cursor->sel_active) sel_delete(&box->gb, cursor);
     else if (cursor->loc.offset < gb_count(box->gb)) gb_delete_n(&box->gb, cursor->loc.offset, 1);
+    cursor->scroll_to = true;
+}
+
+void cursor_copy(TextBox box, Cursor cursor) {
+    size_t offset = loc_first(cursor.loc, cursor.sel_start).offset, length = loc_last(cursor.loc, cursor.sel_start).offset - offset;
+    char *text = gb_encode(box.gb, offset, length);
+    SetClipboardText(text);
+    free(text);
+}
+
+void cursor_paste(TextBox *box, Cursor *cursor) {
+    if (cursor->sel_active) sel_delete(&box->gb, cursor);
+    const char *text = GetClipboardText();
+    size_t len, processed_bytes, str_len = strlen(text);
+    Utf8Error error = utf8_measure_codepoints(text, str_len, &len, &processed_bytes);
+    ensure(!error);
+    uint32_t *codepoints = malloc(sizeof(uint32_t) * len);
+    size_t decoded;
+    error = utf8_decode(text, str_len, true, len, codepoints, &decoded);
+    ensure(!error);
+    gb_insert_n(&box->gb, cursor->loc.offset, codepoints, len);
+    free(codepoints);
+    cursor->loc.offset += len;
+    cursor->scroll_to = true;
+    cursor->loc.pre_wrap = true;
+    cursor->update_sticky_x = true;
 }
 
 GapBuffer gb_create(size_t cap) {
@@ -478,6 +507,37 @@ GapBuffer gb_create_from_text(char *text, size_t str_len) {
     gb.offset = len;
     gb.gap = len;
     return gb;
+}
+
+void gb_destroy(GapBuffer *gb) {
+    gb->cap = 0;
+    gb->gap = 0;
+    gb->offset = 0;
+    free(gb->data);
+    gb->data = NULL;
+}
+
+char *gb_encode(GapBuffer gb, size_t offset, size_t length) {
+    assert(offset + length <= gb_count(gb));
+    size_t pre_gap = 0, post_gap = 0, bytes = 0;
+    Utf8Error error;
+    if (offset < gb.offset) {
+        pre_gap = min(gb.offset - offset, length);
+        error = utf8_measure_bytes(gb.data + offset, pre_gap, true, &bytes);
+        ensure(!error);
+    } 
+    if (offset + length > gb.offset) {
+        size_t bytes_temp;
+        post_gap = min(offset + length - gb.offset, length);
+        error = utf8_measure_bytes(gb.data + gb.gap + max(gb.offset, offset), post_gap, true, &bytes_temp);
+        ensure(!error);
+        bytes += bytes_temp;
+    }
+    char *ret = malloc(sizeof(char) * (bytes + 1)); // +1 for '\0'
+    size_t written = 0;
+    if (pre_gap) ensure(!utf8_encode(gb.data + offset, pre_gap, true, bytes + 1, ret, &written));
+    if (post_gap) ensure(!utf8_encode(gb.data + gb.gap + max(gb.offset, offset), post_gap, true, bytes + 1 - written, ret + written, &written));
+    return ret;
 }
 
 static void gb_move_gap(GapBuffer *gb, size_t index) {

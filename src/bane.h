@@ -276,6 +276,8 @@ typedef struct {
 
 GapBuffer gb_create_from_text(char *text, size_t str_len);
 GapBuffer gb_create(size_t cap);
+void gb_destroy(GapBuffer *gb);
+char *gb_encode(GapBuffer gb, size_t offset, size_t length);
 size_t gb_count(GapBuffer gb);
 void gb_insert(GapBuffer *gb, size_t index, uint32_t value);
 void gb_insert_n(GapBuffer *gb, size_t index, uint32_t *values, size_t n);
@@ -325,5 +327,8 @@ void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting);
 void cursor_write(TextBox *box, Cursor *cursor, uint32_t c);
 void cursor_backspace(TextBox *box, Cursor *cursor);
 void cursor_delete(TextBox *box, Cursor *cursor);
+
+void cursor_copy(TextBox box, Cursor cursor);
+void cursor_paste(TextBox *box, Cursor *cursor);
 
 #endif
