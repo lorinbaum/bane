@@ -25,6 +25,7 @@ static bool is_continuation_byte(unsigned char c) { return between(c, 0x80, 0xBF
 typedef enum { SEQ_OK = 0, SEQ_TRUNCATED = 1, SEQ_INVALID = 2 } SeqError;
 
 static SeqError utf8_sequence_length(const unsigned char *str, size_t max_len, uint_least8_t *sequence_len) {
+	assert(str != NULL);
 	*sequence_len = 0;
 	for (uint_least8_t off = 0; off < 4; off++) {
 		if (between(str[0], lut[off].lower, lut[off].upper)) {
@@ -47,6 +48,7 @@ static SeqError utf8_sequence_length(const unsigned char *str, size_t max_len, u
 }
 
 static bool utf8_codepoint_bytes(uint32_t codepoint, uint_least8_t *len) {
+	assert(len != NULL);
 	if (is_valid_utf8_codepoint(codepoint)) {
 		for (uint_least8_t off = 0; off < 4; off++) {
 			if (between(codepoint, lut[off].mincp, lut[off].maxcp)) {
@@ -60,7 +62,6 @@ static bool utf8_codepoint_bytes(uint32_t codepoint, uint_least8_t *len) {
 }
 
 Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes) {
-	if (str == NULL || out_len == NULL || processed_bytes == NULL)  { return UTF8_INVALID_ARGUMENT; }
 	*out_len = 0;
 	uint_least8_t sequence_len;
 	for (*processed_bytes = 0; *processed_bytes < in_len; *processed_bytes += sequence_len, (*out_len)++) {
@@ -72,7 +73,6 @@ Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_le
 }
 
 Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len) {
-	if (str == NULL || out_len == NULL || codepoints == NULL) { return UTF8_INVALID_ARGUMENT; }
 	*out_len = 0;
 	Utf8Error error = UTF8_OK;
 	uint_least8_t sequence_len;
@@ -96,7 +96,6 @@ Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_ca
 }
 
 Utf8Error utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool strict, size_t *out_len) {
-	if (codepoints == NULL || out_len == NULL) { return UTF8_INVALID_ARGUMENT; }
 	*out_len = 0;
 	Utf8Error error = UTF8_OK;
 	uint_least8_t sequence_len;
@@ -110,7 +109,7 @@ Utf8Error utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool str
 }
 
 Utf8Error utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len) {
-	if (str == NULL || codepoints == NULL || out_len == NULL || out_cap < 1 ) { return UTF8_INVALID_ARGUMENT; } // outcap >= 1 because at least space for '\0'
+	if (out_cap < 1 ) { return UTF8_INVALID_ARGUMENT; } // outcap >= 1 because at least space for '\0'
 	*out_len = 0;
 	Utf8Error error = UTF8_OK;
 	uint_least8_t sequence_len;

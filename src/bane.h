@@ -7,6 +7,8 @@
 #include <assert.h>
 #include <string.h>
 
+
+
 typedef struct {
 	uint32_t key; // 32 instead of 16 for easiser key generation: character keycode can be used in full
 	uint16_t x, y, w, h;
@@ -25,10 +27,10 @@ typedef struct {
     uint16_t *buckets;
 } RectMap;
 
-RmError rectmap_create(uint16_t max_entries, RectMap *ret);
-RmError rectmap_get(RectMap map, uint32_t key, TextureRect *ret);
-RmError rectmap_put(RectMap *map, TextureRect rect);
-void rectmap_destroy(RectMap *map);
+RmError rectmap_create(uint16_t max_entries, RectMap *ret) __nonnull((2));
+RmError rectmap_get(RectMap map, uint32_t key, TextureRect *ret) __nonnull((3));
+RmError rectmap_put(RectMap *map, TextureRect rect) __nonnull((1));
+void rectmap_destroy(RectMap *map) __nonnull((1));
 
 // Indirection required to use __COUNTER__ and similar as argument.
 // Inspiration from linux kernel include/linux/minmax.h
@@ -48,6 +50,7 @@ void rectmap_destroy(RectMap *map);
 #define sb_create(type, cap) _sb_create(type, __UNIQUE, cap, __UNIQUE)
 
 #define _sb_destroy(sb_ptr, sb) __extension__({\
+    assert(sb_ptr != NULL);\
     __auto_type sb = (sb_ptr);\
     free(sb->items);\
     sb->items = NULL;\
@@ -86,6 +89,7 @@ void rectmap_destroy(RectMap *map);
 #define sb_rset_attr(sb, index, attr, ...) _sb_rset_attr(sb, __UNIQUE, index, __UNIQUE, attr, __UNIQUE, __VA_ARGS__)
 
 #define __sb_expand(sb_ptr, sb) __extension__({\
+    assert(sb_ptr != NULL);\
     __auto_type sb = (sb_ptr);\
     if (sb->count >= sb->cap) { \
         sb->cap = sb->count > 0 ? sb->count * 2 : 16; \
@@ -94,15 +98,17 @@ void rectmap_destroy(RectMap *map);
     }})
 #define _sb_expand(sb_ptr) __sb_expand(sb_ptr, __UNIQUE)
 
-#define _sb_append(sb_v, sb, value, ...) __extension__({\
-    __auto_type sb = (sb_v); __typeof__(sb->items[0]) value = (__VA_ARGS__);\
+#define _sb_append(sb_ptr, sb, value, ...) __extension__({\
+    assert(sb_ptr != NULL);\
+    __auto_type sb = (sb_ptr); __typeof__(sb->items[0]) value = (__VA_ARGS__);\
     _sb_expand(sb);\
     sb->items[sb->count] = value;\
     sb->count++;})
 #define sb_append(sb_ptr, ...) _sb_append(sb_ptr, __UNIQUE, __UNIQUE, __VA_ARGS__)
 
-#define _sb_insert(sb_v, sb, index_v, index, value, ...) __extension__({\
-    __auto_type sb = (sb_v); size_t index = (index_v); __typeof__(sb->items[0]) value = (__VA_ARGS__);\
+#define _sb_insert(sb_ptr, sb, index_v, index, value, ...) __extension__({\
+    assert(sb_ptr != NULL);\
+    __auto_type sb = (sb_ptr); size_t index = (index_v); __typeof__(sb->items[0]) value = (__VA_ARGS__);\
     assert(index <= sb->count);\
     _sb_expand(sb);\
     memmove(sb->items + index + 1, sb->items + index, sizeof(sb->items[0]) * (sb->count - index));\
@@ -111,14 +117,16 @@ void rectmap_destroy(RectMap *map);
 #define sb_insert(sb_ptr, index, ...) _sb_insert(sb_ptr, __UNIQUE, index, __UNIQUE, __UNIQUE, __VA_ARGS__)
 
 #define _sb_delete(sb_ptr, sb, index_v, index) __extension__({\
+    assert(sb_ptr != NULL);\
     __auto_type sb = (sb_ptr); size_t index = (index_v);\
     assert(index < sb->count);\
     memmove(sb->items + index, sb->items + index + 1, sizeof(sb->items[0]) * (sb->count - index - 1));\
     sb->count--;})
 #define sb_delete(sb_ptr, index) _sb_delete(sb_ptr, __UNIQUE, index, __UNIQUE)
 
-#define _sb_copy(dest_v, dest, src_v, src) __extension__({\
-    __auto_type dest = (dest_v); __auto_type src = (src_v);\
+#define _sb_copy(dest_ptr, dest, src_ptr, src) __extension__({\
+    assert(dest_ptr != NULL && src_ptr != NULL);\
+    __auto_type dest = (dest_ptr); __auto_type src = (src_ptr);\
     assert(dest->items != src->items);\
     if (src->cap > dest->cap) {\
         free(dest->items);\
@@ -154,7 +162,7 @@ void rectmap_destroy(RectMap *map);
 })
 #define between(x, lower, upper) __between(x, lower, upper, __UNIQUE, __UNIQUE, __UNIQUE)
 
-void ensure_fail(const char *file, int line, const char *func, const char *expr);
+void ensure_fail(const char *file, int line, const char *func, const char *expr) __nonnull((1,3,4));
 #define ensure(expr) ((expr) ? (void) (0) : ensure_fail(__FILE__, __LINE__, __func__, #expr))
 
 typedef struct {
@@ -184,14 +192,14 @@ typedef enum { TA_OK = 0, TA_MAX_SIZE_EXCEEDED = 1, TA_RECT_NOT_FOUND = 2 } TaEr
 
 // square packing area starts out small, then expands until it reaches a side length of max_size
 TextureAtlas* texture_atlas_create(int max_size); 
-void texture_atlas_destroy(TextureAtlas **texture_atlas);
+void texture_atlas_destroy(TextureAtlas **texture_atlas) __nonnull((1));
 
 // Add a new rect to your texture atlas or returns existing rect if key exists already.
-TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect);
-TaError texture_atlas_get_rect(TextureAtlas *texture_atlas, uint32_t key, TextureRect *return_rect);
+TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect) __nonnull((1,6));
+TaError texture_atlas_get_rect(TextureAtlas *texture_atlas, uint32_t key, TextureRect *return_rect) __nonnull((1,3));
 
-void texture_atlas_update_texture(TextureAtlas *texture_atlas);
-TaError texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint);
+void texture_atlas_update_texture(TextureAtlas *texture_atlas) __nonnull((1));
+TaError texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) __nonnull((1));
 
 // UTF8
 
@@ -208,11 +216,10 @@ typedef enum { UTF8_OK = 0, UTF8_TOO_SHORT = 1, UTF8_INVALID = 2, UTF8_INVALID_A
  * @param codepoints Decoded codepoints. Written on the go until error or done.
  * @param out_len Number of codepoints decoded. Written on the go until error or done.
  * @retval UTF8_OK Success.
- * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
  * @retval UTF8_TOO_SHORT in_len cuts input mid-utf8-sequence (takes priority over UTF8_INVALID if both apply).
  * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
  */
-Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len);
+Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len) __nonnull((1,5,6));
 
 /**
  * @brief Encode unicode codepoints as UTF8 string.
@@ -225,11 +232,11 @@ Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_ca
  * @param str Encoded string. Written on the go until error or done.
  * @param out_len Number of bytes encoded. Written on the go until error or done.
  * @retval UTF8_OK Success.
- * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
+ * @retval UTF8_INVALID_ARGUMENT NULL out_cap is 0. needs at least one for '\0'.
  * @retval UTF8_TOO_SHORT out_cap cuts output mid-utf8-sequence (takes priority over UTF8_INVALID if both apply).
  * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
  */
-Utf8Error utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len);
+Utf8Error utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len) __nonnull((1,5,6));
 
 /**
  * @brief Validate codepoints and count number of bytes necessary to encode them.
@@ -240,10 +247,9 @@ Utf8Error utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, si
  *     false: encode as U+FFFD (Replacement Character) and continue.
  * @param out_len Number of bytes needed. Written on the go until error or done.
  * @retval UTF8_OK Success.
- * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
  * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
  */
-Utf8Error utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool strict, size_t *out_len);
+Utf8Error utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool strict, size_t *out_len) __nonnull((1,4));
 
 /**
  * @brief Count number of codepoints encoded in string. Does not validate input.
@@ -252,10 +258,9 @@ Utf8Error utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool str
  * @param out_len Number of codepoints in str. Written on the go until error or done.
  * @param processed_bytes Number of input bytes processed. If UTF8_TOO_SHORT, this does not include incomplete sequences.
  * @retval UTF8_OK Success.
- * @retval UTF8_INVALID_ARGUMENT NULL is passed, nothing happened.
  * @retval UTF8_TOO_SHORT in_len cuts input mid-utf8-sequence
  */
-Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes);
+Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes) __nonnull((1,3,4));
 
 #define INVALID_CODEPOINT UINT32_C(0xFFFD)
 
@@ -276,12 +281,12 @@ typedef struct {
 
 GapBuffer gb_create_from_text(char *text, size_t str_len);
 GapBuffer gb_create(size_t cap);
-void gb_destroy(GapBuffer *gb);
+void gb_destroy(GapBuffer *gb) __nonnull((1));
 char *gb_encode(GapBuffer gb, size_t offset, size_t length);
 size_t gb_count(GapBuffer gb);
-void gb_insert(GapBuffer *gb, size_t index, uint32_t value);
-void gb_insert_n(GapBuffer *gb, size_t index, uint32_t *values, size_t n);
-void gb_delete_n(GapBuffer *gb, size_t index, size_t n);
+void gb_insert(GapBuffer *gb, size_t index, uint32_t value) __nonnull((1));
+void gb_insert_n(GapBuffer *gb, size_t index, uint32_t *values, size_t n) __nonnull((1,3));
+void gb_delete_n(GapBuffer *gb, size_t index, size_t n) __nonnull((1));
 uint32_t gb_get(GapBuffer gb, size_t index);
 
 typedef struct {
@@ -310,25 +315,25 @@ typedef struct {
     bool scroll_to;         // set to true to scroll to put cursor into view in next frame
 } Cursor;
 
-void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor);
+void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) __nonnull((1,3,4));
 
-void cursor_right(TextBox box, Cursor *cursor, bool selecting);
-void cursor_left(Cursor *cursor, bool selecting);
-void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting);
-void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting);
-void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting);
-void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting);
-void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int_least32_t y, bool selecting);
-void cursor_page_up(TextBox box, Style style, Cursor *cursor, bool selecting);
-void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting);
-void cursor_next_word(TextBox box, Cursor *cursor, bool selecting);
-void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting);
+void cursor_right(TextBox box, Cursor *cursor, bool selecting) __nonnull((2));
+void cursor_left(Cursor *cursor, bool selecting) __nonnull((1));
+void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
+void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
+void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
+void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
+void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int_least32_t y, bool selecting) __nonnull((3));
+void cursor_page_up(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
+void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting)  __nonnull((3));
+void cursor_next_word(TextBox box, Cursor *cursor, bool selecting) __nonnull((2));
+void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting) __nonnull((2));
 
-void cursor_write(TextBox *box, Cursor *cursor, uint32_t c);
-void cursor_backspace(TextBox *box, Cursor *cursor);
-void cursor_delete(TextBox *box, Cursor *cursor);
+void cursor_write(TextBox *box, Cursor *cursor, uint32_t c) __nonnull((1,2));
+void cursor_backspace(TextBox *box, Cursor *cursor) __nonnull((1,2));
+void cursor_delete(TextBox *box, Cursor *cursor) __nonnull((1,2));
 
 void cursor_copy(TextBox box, Cursor cursor);
-void cursor_paste(TextBox *box, Cursor *cursor);
+void cursor_paste(TextBox *box, Cursor *cursor) __nonnull((1,2));
 
 #endif

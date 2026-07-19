@@ -172,6 +172,7 @@ static bool find_best_anchor(sb_IntVec2 *anchors, int size, int max_size, int w,
 }
 
 static void update_anchors(sb_IntVec2 *anchors, Anchor best, int w, int h) {
+    assert(anchors != NULL);
     int latest_y;
     unsigned int next_i = best.index;
     if (sb_get(*anchors, best.index).y != best.y+h) { // anchors to the left and at same y would always be preferred anyway
@@ -186,6 +187,7 @@ static void update_anchors(sb_IntVec2 *anchors, Anchor best, int w, int h) {
 }
 
 static TaError texture_atlas_resize(int *size, int max_size, sb_IntVec2 *anchors) {
+    assert(size != NULL && anchors != NULL);
     if (*size == max_size) { return TA_MAX_SIZE_EXCEEDED; }
     *size = min(max_size, *size * 2);
     // update or add new old sentinel
@@ -204,7 +206,6 @@ TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Im
     Other positions wouldn't be used given the algorithm.
     Each TextureRect.x and .y refer to the top left corner of the associated image in the texture atlas.
     */
-    assert(return_rect != NULL && texture_atlas != NULL);
     TextureRect rect;
     TaError error = texture_atlas_get_rect(texture_atlas, key, &rect);
     if (error == TA_RECT_NOT_FOUND) {

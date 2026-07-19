@@ -69,6 +69,7 @@ static bool sel_deactivated(Cursor *cursor, bool selecting) {
 
 // Shapes exactly one line worth of text. Only populates out's .xs, .count .end
 static void shape_text(GapBuffer gb, size_t offset, FT_Face face, int_least32_t w, Line *out) {
+    assert(out != NULL);
     out->xs.count = 0;
     sb_append(&out->xs, 0);
     out->end = END_INPUT;
@@ -109,6 +110,7 @@ static int_least32_t baseline_offset_px(FT_Face face) {
 }
 
 static void first_line(TextBox box, FT_Face face, Line *out) {
+    assert(out != NULL);
     out->y = box.y + baseline_offset_px(face);
     out->offset = 0;
     shape_text(box.gb, 0, face, box.w, out);
@@ -118,6 +120,7 @@ static void first_line(TextBox box, FT_Face face, Line *out) {
 // NOTE: next_line is strongly assumed to successfully reach all valid positions in predictable system state.
 // So: if next_line is expected, a pattern like "if (!next_line) abort()" is deemed acceptable
 static bool next_line(TextBox box, Style style, Line *in, Line *out) {
+    assert(in != NULL && out != NULL);
     size_t new_offset = in->offset + in->count;
     if (new_offset > gb_count(box.gb) || (new_offset == gb_count(box.gb) && in->end != END_LF)) return false; // no line after in
     out->y = in->y + line_height_px(style);
@@ -128,6 +131,7 @@ static bool next_line(TextBox box, Style style, Line *in, Line *out) {
 
 // Populates out with all attributes of Line covering Position(offset, pre_wrap) in the text
 static void shape_line(TextBox box, Style style, size_t offset, bool pre_wrap, Line *out) {
+    assert(out != NULL);
     assert(offset <= gb_count(box.gb));
     first_line(box, style.face, out);
     while (!line_contains(*out, offset, pre_wrap)) ensure(next_line(box, style, out, out));
@@ -144,6 +148,7 @@ static int_least32_t x_offset(Line line, size_t offset) {
 }
 
 static void draw_char(FT_Face face, TextureAtlas *atlas, uint32_t cp, int_least32_t x, int_least32_t y, Color color) {
+    assert(atlas != NULL);
     if (cp == LF || cp == SPACE) return;
     FT_UInt glyph_index = FT_Get_Char_Index(face, cp);
     TextureRect rect;
@@ -167,20 +172,18 @@ void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) {
     // characters aren't drawn one by one because it takes preprocessing the whole line to know where it wraps
     Line line = line_create();
     int_least32_t cursor_x, cursor_y, line_h = line_height_px(style), baseline_offset = baseline_offset_px(style.face);
-    if (cursor != NULL) {
-        shape_line(*box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
-        cursor_x = box->x + x_offset(line, cursor->loc.offset);
-        cursor_y = line.y - baseline_offset;
-        if (cursor->scroll_to) { // scroll into view
-            if (cursor_y + box->scroll_y < box->y) box->scroll_y = box->y - cursor_y;
-            else if (cursor_y + line_h + box->scroll_y > box->y + box->h) box->scroll_y = box->y + box->h - (cursor_y + line_h);
-            cursor->scroll_to = false;
-        }
+    shape_line(*box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
+    cursor_x = box->x + x_offset(line, cursor->loc.offset);
+    cursor_y = line.y - baseline_offset;
+    if (cursor->scroll_to) { // scroll into view
+        if (cursor_y + box->scroll_y < box->y) box->scroll_y = box->y - cursor_y;
+        else if (cursor_y + line_h + box->scroll_y > box->y + box->h) box->scroll_y = box->y + box->h - (cursor_y + line_h);
+        cursor->scroll_to = false;
     }
     first_line(*box, style.face, &line);
     // skip invisible lines
     while (line.y - baseline_offset + line_h + box->scroll_y <= box->y) if (!next_line(*box, style, &line, &line)) return; 
-    if (cursor != NULL && cursor->sel_active && !locs_overlap(cursor->loc, cursor->sel_start)) {
+    if (cursor->sel_active && !locs_overlap(cursor->loc, cursor->sel_start)) {
         // draw text + selection together
         CursorLoc start, end;
         if (locs_reversed(cursor->loc, cursor->sel_start)) { start = cursor->sel_start; end = cursor->loc;}
@@ -211,7 +214,7 @@ void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) {
     line_destroy(line);
     // draw cursor. Drawn at end to layer over text and selection while avoiding raylib's rshapes which wants camera and 3D Mode.
     // Wait for WebGPU backend to fix.
-    if (cursor != NULL && cursor_y + box->scroll_y >= box->y && cursor_y + box->scroll_y < box->y + box->h) {
+    if (cursor_y + box->scroll_y >= box->y && cursor_y + box->scroll_y < box->y + box->h) {
         DrawLineEx((Vector2) {cursor_x, cursor_y + box->scroll_y}, (Vector2) {cursor_x, cursor_y + line_h + box->scroll_y}, 1, style.cursor_color);
     }
 }
@@ -238,6 +241,7 @@ void cursor_left(Cursor *cursor, bool selecting) {
 
 // find closest entry in line.xs to x, set cursor to corresponding offset, pre_wrap
 static void cursor_to_closest_x(TextBox box, Line line, Cursor *cursor, int_least32_t x) {
+    assert(cursor != NULL);
     cursor->loc.offset = line.offset;
     cursor->loc.pre_wrap = false;
     uint_least32_t d = labs(box.x - x);
@@ -253,6 +257,7 @@ static void cursor_to_closest_x(TextBox box, Line line, Cursor *cursor, int_leas
 
 // to call by functions that use cursor->loc.sticky_x. requires shaping lines, so only used when necessary
 static void update_sticky_x(TextBox box, Style style, Cursor *cursor) {
+    assert(cursor != NULL);
     if (cursor->update_sticky_x) {
         Line line = line_create();
         shape_line(box, style, cursor->loc.offset, cursor->loc.pre_wrap, &line);
@@ -329,6 +334,7 @@ void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting) {
 
 // set out to line that covers or is closest to y
 static void closest_line_y(TextBox box, Style style, int_least32_t y, Line *out) {
+    assert(out != NULL);
     Line lines[2] = {line_create(), line_create()};
     uint_least8_t head = 0;
     first_line(box, style.face, &lines[head]);
@@ -431,6 +437,7 @@ void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting) {
 }
 
 static void sel_delete(GapBuffer *gb, Cursor *cursor) {
+    assert(gb != NULL && cursor != NULL);
     size_t n;
     if (locs_reversed(cursor->loc, cursor->sel_start)) {
         n = cursor->loc.offset - cursor->sel_start.offset;
@@ -541,7 +548,7 @@ char *gb_encode(GapBuffer gb, size_t offset, size_t length) {
 }
 
 static void gb_move_gap(GapBuffer *gb, size_t index) {
-    assert(index <= gb_count(*gb));
+    assert(gb != NULL && index <= gb_count(*gb));
     if (index < gb->offset) memmove(gb->data + index + gb->gap, gb->data + index, sizeof(uint32_t) * (gb->offset - index));
     else if (index > gb->offset) memmove(gb->data + gb->offset, gb->data + gb->gap + gb->offset, sizeof(uint32_t) * (index - gb->offset));
     gb->offset = index;
