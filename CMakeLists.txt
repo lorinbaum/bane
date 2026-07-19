@@ -8,6 +8,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
 endif()
+add_compile_options(-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.)
 
 # FREETYPE
 set(FT_WITH_ZLIB OFF CACHE BOOL "" FORCE)
@@ -80,6 +81,8 @@ set(SUPPORT_SCREEN_CAPTURE ON CACHE BOOL "" FORCE)
 add_subdirectory(extern/raylib)
 
 # BANE
+
+add_compile_options(-Wall -Wextra -Wpedantic -Wshadow)
 
 add_subdirectory(src)
 
