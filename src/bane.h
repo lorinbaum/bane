@@ -335,5 +335,8 @@ void cursor_delete(TextBox *box, Cursor *cursor) __nonnull((1,2));
 
 void cursor_copy(TextBox box, Cursor cursor);
 void cursor_paste(TextBox *box, Cursor *cursor) __nonnull((1,2));
+void cursor_cut(TextBox *box, Cursor *cursor) __nonnull((1,2));
+
+void cursor_select_all(TextBox box, Cursor *cursor) __nonnull((2));
 
 #endif

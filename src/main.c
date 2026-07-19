@@ -83,7 +83,10 @@ int main(void) {
 
         if (IsKeyPressed(KEY_C) && ctrl) cursor_copy(textbox, cursor);
         if ((IsKeyPressed(KEY_V) || IsKeyPressedRepeat(KEY_V)) && ctrl) cursor_paste(&textbox, &cursor);
+        if (IsKeyPressed(KEY_X) && ctrl) cursor_cut(&textbox, &cursor);
         
+        if (IsKeyPressed(KEY_A) && ctrl) cursor_select_all(textbox, &cursor);
+
         if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) cursor_backspace(&textbox, &cursor);
         if (IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) cursor_delete(&textbox, &cursor);
 

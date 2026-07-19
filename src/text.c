@@ -471,10 +471,12 @@ void cursor_delete(TextBox *box, Cursor *cursor) {
 }
 
 void cursor_copy(TextBox box, Cursor cursor) {
-    size_t offset = loc_first(cursor.loc, cursor.sel_start).offset, length = loc_last(cursor.loc, cursor.sel_start).offset - offset;
-    char *text = gb_encode(box.gb, offset, length);
-    SetClipboardText(text);
-    free(text);
+    if (cursor.sel_active) {
+        size_t offset = loc_first(cursor.loc, cursor.sel_start).offset, length = loc_last(cursor.loc, cursor.sel_start).offset - offset;
+        char *text = gb_encode(box.gb, offset, length);
+        SetClipboardText(text);
+        free(text);
+    }
 }
 
 void cursor_paste(TextBox *box, Cursor *cursor) {
@@ -492,6 +494,21 @@ void cursor_paste(TextBox *box, Cursor *cursor) {
     cursor->scroll_to = true;
     cursor->loc.pre_wrap = true;
     cursor->update_sticky_x = true;
+}
+
+void cursor_cut(TextBox *box, Cursor *cursor) {
+    cursor_copy(*box, *cursor);
+    if (cursor->sel_active) sel_delete(&box->gb, cursor);
+}
+
+void cursor_select_all(TextBox box, Cursor *cursor) {
+    cursor->sel_start.offset = 0;
+    cursor->sel_start.pre_wrap = true;
+    cursor->sel_start.sticky_x = box.x;
+    cursor->loc.offset = gb_count(box.gb);
+    cursor->loc.pre_wrap = false;
+    cursor->update_sticky_x = true;
+    cursor->sel_active = true;
 }
 
 GapBuffer gb_create(size_t cap) {
