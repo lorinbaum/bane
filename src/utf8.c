@@ -62,6 +62,8 @@ static bool utf8_codepoint_bytes(uint32_t codepoint, uint_least8_t *len) {
 }
 
 Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes) {
+	size_t _processed_bytes = 0;
+	if (processed_bytes == NULL) processed_bytes = &_processed_bytes; // dummy to avoid rechecking later
 	*out_len = 0;
 	uint_least8_t sequence_len;
 	for (*processed_bytes = 0; *processed_bytes < in_len; *processed_bytes += sequence_len, (*out_len)++) {
@@ -73,6 +75,8 @@ Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_le
 }
 
 Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len) {
+	size_t _out_len = 0;
+	if (out_len == NULL) out_len = &_out_len; // dummy to avoid rechecking later
 	*out_len = 0;
 	Utf8Error error = UTF8_OK;
 	uint_least8_t sequence_len;
@@ -110,6 +114,8 @@ Utf8Error utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool str
 
 Utf8Error utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len) {
 	if (out_cap < 1 ) { return UTF8_INVALID_ARGUMENT; } // outcap >= 1 because at least space for '\0'
+	size_t _out_len = 0;
+	if (out_len == NULL) out_len = &_out_len; // dummy to avoid rechecking later
 	*out_len = 0;
 	Utf8Error error = UTF8_OK;
 	uint_least8_t sequence_len;

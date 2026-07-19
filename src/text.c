@@ -480,12 +480,11 @@ void cursor_copy(TextBox box, Cursor cursor) {
 void cursor_paste(TextBox *box, Cursor *cursor) {
     if (cursor->sel_active) sel_delete(&box->gb, cursor);
     const char *text = GetClipboardText();
-    size_t len, processed_bytes, str_len = strlen(text);
-    Utf8Error error = utf8_measure_codepoints(text, str_len, &len, &processed_bytes);
+    size_t len, str_len = strlen(text);
+    Utf8Error error = utf8_measure_codepoints(text, str_len, &len, NULL);
     ensure(!error);
     uint32_t *codepoints = malloc(sizeof(uint32_t) * len);
-    size_t decoded;
-    error = utf8_decode(text, str_len, true, len, codepoints, &decoded);
+    error = utf8_decode(text, str_len, true, len, codepoints, NULL);
     ensure(!error);
     gb_insert_n(&box->gb, cursor->loc.offset, codepoints, len);
     free(codepoints);
@@ -503,13 +502,12 @@ GapBuffer gb_create(size_t cap) {
 
 GapBuffer gb_create_from_text(char *text, size_t str_len) {
     assert(text != NULL && str_len > 0);
-    size_t len, processed_bytes;
-    Utf8Error error = utf8_measure_codepoints(text, str_len, &len, &processed_bytes);
+    size_t len;
+    Utf8Error error = utf8_measure_codepoints(text, str_len, &len, NULL);
     ensure(!error);
     ensure(len * 2 > len);
     GapBuffer gb = gb_create(len * 2);
-    size_t decoded;
-    error = utf8_decode(text, str_len, true, len, gb.data, &decoded);
+    error = utf8_decode(text, str_len, true, len, gb.data, NULL);
     ensure(!error);
     gb.offset = len;
     gb.gap = len;
@@ -543,7 +541,7 @@ char *gb_encode(GapBuffer gb, size_t offset, size_t length) {
     char *ret = malloc(sizeof(char) * (bytes + 1)); // +1 for '\0'
     size_t written = 0;
     if (pre_gap) ensure(!utf8_encode(gb.data + offset, pre_gap, true, bytes + 1, ret, &written));
-    if (post_gap) ensure(!utf8_encode(gb.data + gb.gap + max(gb.offset, offset), post_gap, true, bytes + 1 - written, ret + written, &written));
+    if (post_gap) ensure(!utf8_encode(gb.data + gb.gap + max(gb.offset, offset), post_gap, true, bytes + 1 - written, ret + written, NULL));
     return ret;
 }
 

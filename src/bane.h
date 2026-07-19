@@ -214,12 +214,12 @@ typedef enum { UTF8_OK = 0, UTF8_TOO_SHORT = 1, UTF8_INVALID = 2, UTF8_INVALID_A
  *     false: decode as U+FFFD (Replacement Character) and continue.
  * @param out_cap Maximum number codepoints to decode.
  * @param codepoints Decoded codepoints. Written on the go until error or done.
- * @param out_len Number of codepoints decoded. Written on the go until error or done.
+ * @param out_len Number of codepoints decoded. Written on the go until error or done. Can be NULL.
  * @retval UTF8_OK Success.
  * @retval UTF8_TOO_SHORT in_len cuts input mid-utf8-sequence (takes priority over UTF8_INVALID if both apply).
  * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
  */
-Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len) __nonnull((1,5,6));
+Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_cap, uint32_t *codepoints, size_t *out_len) __nonnull((1,5));
 
 /**
  * @brief Encode unicode codepoints as UTF8 string.
@@ -230,13 +230,13 @@ Utf8Error utf8_decode(const char *str, size_t in_len, bool strict, size_t out_ca
  *     false: encode as U+FFFD (Replacement Character) and continue.
  * @param out_cap Maximum number bytes to write. If reached while decoding, stops without error
  * @param str Encoded string. Written on the go until error or done.
- * @param out_len Number of bytes encoded. Written on the go until error or done.
+ * @param out_len Number of bytes encoded. Written on the go until error or done. Can be NULL.
  * @retval UTF8_OK Success.
  * @retval UTF8_INVALID_ARGUMENT NULL out_cap is 0. needs at least one for '\0'.
  * @retval UTF8_TOO_SHORT out_cap cuts output mid-utf8-sequence (takes priority over UTF8_INVALID if both apply).
  * @retval UTF8_INVALID Some part of the input is invalid, including if strict is false.
  */
-Utf8Error utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len) __nonnull((1,5,6));
+Utf8Error utf8_encode(const uint32_t *codepoints, size_t in_len, bool strict, size_t out_cap, char *str, size_t *out_len) __nonnull((1,5));
 
 /**
  * @brief Validate codepoints and count number of bytes necessary to encode them.
@@ -256,11 +256,11 @@ Utf8Error utf8_measure_bytes(const uint32_t *codepoints, size_t in_len, bool str
  * @param str UTF8 encoded string to decode.
  * @param in_len Maximum number of bytes to decode.
  * @param out_len Number of codepoints in str. Written on the go until error or done.
- * @param processed_bytes Number of input bytes processed. If UTF8_TOO_SHORT, this does not include incomplete sequences.
+ * @param processed_bytes Number of input bytes processed. If UTF8_TOO_SHORT, this does not include incomplete sequences. Can be NULL.
  * @retval UTF8_OK Success.
  * @retval UTF8_TOO_SHORT in_len cuts input mid-utf8-sequence
  */
-Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes) __nonnull((1,3,4));
+Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_len, size_t *processed_bytes) __nonnull((1,3));
 
 #define INVALID_CODEPOINT UINT32_C(0xFFFD)
 

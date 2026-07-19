@@ -352,8 +352,7 @@ int main(int argc, char *argv[]) {
 
 		bool len_match = true;
 		size_t measured_len = 0;
-		size_t processed_bytes;
-		utf8_measure_codepoints(decoder_test[i].str, decoder_test[i].len, &measured_len, &processed_bytes);
+		utf8_measure_codepoints(decoder_test[i].str, decoder_test[i].len, &measured_len, NULL);
 		len_match = len == measured_len;
 
 		if (len != decoder_test[i].exp_len) {
