@@ -22,23 +22,18 @@ int main(void) {
     
     TextureAtlas *glyph_atlas = texture_atlas_create(4096);
     
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(800, 450, "Bane of my existence");
+    
     char *text = u8"assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\n"
     "Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};\n"
     "status = texture_atlas_add_get_rect(&rect, atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top);\n"
     "assert(status == TA_OK);\n\n"
     "assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\na";
-    // char *text = u8"\na\naaaaa\n\na\n";
-    size_t len, processed_bytes;
     
-    if (utf8_measure_codepoints(text, strlen(text), &len, &processed_bytes) != UTF8_OK) { return 1; }
-    uint32_t codepoints[len];
-    if (utf8_decode(text, strlen(text), true, len, codepoints, &len) != UTF8_OK) { return 1; }
-    
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(800, 450, "Bane of my existence");
-
+    GapBuffer gb = gb_create_from_text(text, strlen(text));
     Cursor cursor = { 0 };
-    TextBox textbox = { .x = 50, .y = 50, .w = GetScreenWidth() - 100, .h = 100, .codepoints = codepoints, .codepoint_count = len };
+    TextBox textbox = { .x = 50, .y = 50, .w = GetScreenWidth() - 100, .h = 100, .gb = gb };
 
     Style style = {
         .cursor_color = WHITE,
@@ -85,7 +80,22 @@ int main(void) {
         }
         if (IsKeyPressed(KEY_PAGE_UP) || IsKeyPressedRepeat(KEY_PAGE_UP)) cursor_page_up(textbox, style, &cursor, selecting);
         if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressedRepeat(KEY_PAGE_DOWN)) cursor_page_down(textbox, style, &cursor, selecting);
+
+        if (IsKeyPressed(KEY_C) && ctrl) cursor_copy(textbox, cursor);
+        if ((IsKeyPressed(KEY_V) || IsKeyPressedRepeat(KEY_V)) && ctrl) cursor_paste(&textbox, &cursor);
         
+        if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) cursor_backspace(&textbox, &cursor);
+        if (IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) cursor_delete(&textbox, &cursor);
+
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressedRepeat(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressedRepeat(KEY_KP_ENTER)) {
+            cursor_write(&textbox, &cursor, LF);
+        }
+        uint32_t c = GetCharPressed();
+        while (c) {
+            cursor_write(&textbox, &cursor, c);
+            c = GetCharPressed();
+        }
+
         float mouse_wheel_move = GetMouseWheelMove();
         if (mouse_wheel_move) {
             Vector2 pos = GetMousePosition();
@@ -102,6 +112,7 @@ int main(void) {
 
     // ExportImage(glyph_atlas->image, "glyph_atlas.jpg");
     
+    gb_destroy(&textbox.gb);
     texture_atlas_destroy(&glyph_atlas);
     CloseWindow();
     FT_Done_Face(face);

@@ -270,9 +270,23 @@ Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_le
 #include FT_FREETYPE_H
 
 typedef struct {
+    size_t cap, gap, offset;
+    uint32_t *data;
+} GapBuffer;
+
+GapBuffer gb_create_from_text(char *text, size_t str_len);
+GapBuffer gb_create(size_t cap);
+void gb_destroy(GapBuffer *gb);
+char *gb_encode(GapBuffer gb, size_t offset, size_t length);
+size_t gb_count(GapBuffer gb);
+void gb_insert(GapBuffer *gb, size_t index, uint32_t value);
+void gb_insert_n(GapBuffer *gb, size_t index, uint32_t *values, size_t n);
+void gb_delete_n(GapBuffer *gb, size_t index, size_t n);
+uint32_t gb_get(GapBuffer gb, size_t index);
+
+typedef struct {
     int_least32_t x, y, w, h, scroll_y; // scroll_y gets negative when scrolling down
-    uint32_t *codepoints;
-    size_t codepoint_count;
+    GapBuffer gb;
 } TextBox;
 
 typedef struct {
@@ -309,5 +323,12 @@ void cursor_page_up(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting);
 void cursor_next_word(TextBox box, Cursor *cursor, bool selecting);
 void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting);
+
+void cursor_write(TextBox *box, Cursor *cursor, uint32_t c);
+void cursor_backspace(TextBox *box, Cursor *cursor);
+void cursor_delete(TextBox *box, Cursor *cursor);
+
+void cursor_copy(TextBox box, Cursor cursor);
+void cursor_paste(TextBox *box, Cursor *cursor);
 
 #endif
