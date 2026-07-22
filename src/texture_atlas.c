@@ -105,50 +105,43 @@ void rectmap_destroy(RectMap *map) {
     map->entries = NULL;
 }
 
-TextureAtlas *texture_atlas_create(int max_size) {
+TextureAtlas texture_atlas_create(int max_size) {
     assert(max_size > 0);
-    TextureAtlas *texture_atlas = calloc(1, sizeof(TextureAtlas));
-    ensure(texture_atlas != NULL);
-    texture_atlas->size = min(DEFAULT_TEXTURE_ATLAS_SIZE, max_size);
-    texture_atlas->max_size = max_size;
-    
-    texture_atlas->skyline_anchors = sb_create(IntVec2, DEFAULT_SKYLINE_ANCHOR_CAP);
-    sb_append(&texture_atlas->skyline_anchors, (IntVec2) {0, 0});
-    sb_append(&texture_atlas->skyline_anchors, (IntVec2) {texture_atlas->size, 0}); // sentinel
-    
-    RmError error = rectmap_create(256, &texture_atlas->rects);
-    ensure(!error);
-    
-    texture_atlas->image = (Image) {
-        calloc(1, texture_atlas->size * texture_atlas->size),
-        texture_atlas->size, texture_atlas->size,
-        1,
-        PIXELFORMAT_UNCOMPRESSED_GRAYSCALE
+    TextureAtlas texture_atlas = {
+        .size = min(DEFAULT_TEXTURE_ATLAS_SIZE, max_size),
+        .max_size = max_size,
+        .skyline_anchors = sb_create(IntVec2, DEFAULT_SKYLINE_ANCHOR_CAP),
+        .image = (Image) {
+            .data = calloc(1, texture_atlas.size * texture_atlas.size),
+            .width = texture_atlas.size,
+            .height = texture_atlas.size,
+            .mipmaps = 1,
+            .format = PIXELFORMAT_UNCOMPRESSED_GRAYSCALE
+        },
+        .image_changed = true,
+        .texture = (Texture2D) { 0 } // texture.id = 0 means UnloadTexture has no effect
     };
-    ensure(texture_atlas->image.data != NULL);
-    
-    texture_atlas->image_changed = true;
-
-    texture_atlas->texture = (Texture2D) { 0 }; // texture.id = 0 means UnloadTexture has no effect
-
+    ensure(texture_atlas.image.data != NULL);
+    sb_append(&texture_atlas.skyline_anchors, (IntVec2) {0, 0});
+    sb_append(&texture_atlas.skyline_anchors, (IntVec2) {texture_atlas.size, 0}); // sentinel
+    RmError error = rectmap_create(256, &texture_atlas.rects);
+    ensure(!error);
     return texture_atlas;
 }
 
-void texture_atlas_destroy(TextureAtlas **texture_atlas) {
-    if (*texture_atlas == NULL) { return; }
-    sb_destroy(&(*texture_atlas)->skyline_anchors);
-    rectmap_destroy(&(*texture_atlas)->rects);
-    UnloadTexture((*texture_atlas)->texture);
-    UnloadImage((*texture_atlas)->image);
-    free((*texture_atlas));
-    *texture_atlas = NULL;
+void texture_atlas_destroy(TextureAtlas *texture_atlas) {
+    sb_destroy(&texture_atlas->skyline_anchors);
+    rectmap_destroy(&texture_atlas->rects);
+    UnloadTexture(texture_atlas->texture);
+    UnloadImage(texture_atlas->image);
+    memset(texture_atlas, 0, sizeof(TextureAtlas));
 }
 
-TaError texture_atlas_get_rect(TextureAtlas *texture_atlas, uint32_t key, TextureRect *return_rect) {
-    return rectmap_get(texture_atlas->rects, key, return_rect) ? TA_RECT_NOT_FOUND : TA_OK;
+TaError texture_atlas_get_rect(TextureAtlas texture_atlas, uint32_t key, TextureRect *return_rect) {
+    return rectmap_get(texture_atlas.rects, key, return_rect) ? TA_RECT_NOT_FOUND : TA_OK;
 }
 
-typedef struct { int x, y, index; } Anchor;
+typedef struct Anchor { int x, y, index; } Anchor;
 
 static bool find_best_anchor(sb_IntVec2 *anchors, int size, int max_size, int w, Anchor *ret) {
     Anchor best = {max_size, max_size, 0};
@@ -207,7 +200,7 @@ TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Im
     Each TextureRect.x and .y refer to the top left corner of the associated image in the texture atlas.
     */
     TextureRect rect;
-    TaError error = texture_atlas_get_rect(texture_atlas, key, &rect);
+    TaError error = texture_atlas_get_rect(*texture_atlas, key, &rect);
     if (error == TA_RECT_NOT_FOUND) {
         if (image.width == 0 || image.height == 0) {
             rect = (TextureRect) {key, 0, 0, 0, 0, origin_x, origin_y};
@@ -264,7 +257,7 @@ void texture_atlas_update_texture(TextureAtlas *texture_atlas) {
 
 TaError texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) {
     TextureRect rect;
-    TaError error = texture_atlas_get_rect(texture_atlas, key, &rect);
+    TaError error = texture_atlas_get_rect(*texture_atlas, key, &rect);
     if (error == TA_RECT_NOT_FOUND) { return error; }
     if (rect.w == 0 || rect.h == 0) { return TA_OK; } // nothing to draw
     Rectangle src = { rect.x, rect.y, rect.w, rect.h };

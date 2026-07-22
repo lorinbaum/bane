@@ -25,16 +25,16 @@ void add_dummy_rect(TextureAtlas *texture_atlas, uint32_t seed, unsigned int cou
 }
 
 void test_skyline_overlap() {
-    TextureAtlas *TA = texture_atlas_create(64);
+    TextureAtlas TA = texture_atlas_create(64);
     TaError error;
     TextureRect rect, comp_rect;
     unsigned int count = 400;
-    add_dummy_rect(TA, 5, count);
+    add_dummy_rect(&TA, 5, count);
     for (unsigned int i = 0; i < count; i++) {
         error = texture_atlas_get_rect(TA, i, &rect);
         assert(!error);
-        assert(rect.x >= 0 && rect.x + rect.w <= TA->size);
-        assert(rect.y >= 0 && rect.y + rect.h <= TA->size);
+        assert(rect.x >= 0 && rect.x + rect.w <= TA.size);
+        assert(rect.y >= 0 && rect.y + rect.h <= TA.size);
         for (unsigned int j = 0; j < count; j++) {
             if (i == j) { continue; }
             error = texture_atlas_get_rect(TA, j, &comp_rect);
@@ -51,27 +51,27 @@ void test_skyline_overlap() {
 }
 
 void test_golden_skyline() {
-    TextureAtlas *TA = texture_atlas_create(128);
-    add_dummy_rect(TA, 1, 600);
+    TextureAtlas TA = texture_atlas_create(128);
+    add_dummy_rect(&TA, 1, 600);
     const char *golden_path = TEST_DATA_DIR "/golden_skyline.png";
     const char *fail_path = TEST_DATA_DIR "/golden_skyline_FAILED.png";
     if (FileExists(golden_path)) {
         Image golden = LoadImage(golden_path);
         assert(IsImageValid(golden)); // could fail if the file does not exist
         int size = GetPixelDataSize(golden.width, golden.height, golden.format);
-        assert(size == GetPixelDataSize(TA->image.width, TA->image.height, TA->image.format));
-        uint8_t *ref_data = (uint8_t *) TA->image.data;
+        assert(size == GetPixelDataSize(TA.image.width, TA.image.height, TA.image.format));
+        uint8_t *ref_data = (uint8_t *) TA.image.data;
         uint8_t *golden_data = (uint8_t *) golden.data;
         for (int i = 0; i < size; i++) {
             if (ref_data[i] != golden_data[i]) {
-                ExportImage(TA->image, fail_path);
+                ExportImage(TA.image, fail_path);
                 printf("FAILED IMAGE IMAGE WRITTEN TO %s\n", fail_path);
                 exit(1);
             }
         }
         UnloadImage(golden);
     } else {
-        ExportImage(TA->image, fail_path);
+        ExportImage(TA.image, fail_path);
         printf("NO REFERENCE IMAGE FOUND AT %s. FAILED IMAGE WRITTEN TO %s\n", golden_path, fail_path);
         exit(1);
     }
@@ -79,49 +79,49 @@ void test_golden_skyline() {
 }
 
 void test_atlas_expand() {
-    TextureAtlas *TA = texture_atlas_create(DEFAULT_TEXTURE_ATLAS_SIZE * 2);
-    assert(TA->size == DEFAULT_TEXTURE_ATLAS_SIZE);
+    TextureAtlas TA = texture_atlas_create(DEFAULT_TEXTURE_ATLAS_SIZE * 2);
+    assert(TA.size == DEFAULT_TEXTURE_ATLAS_SIZE);
     const int s = DEFAULT_TEXTURE_ATLAS_SIZE / 2;
     TextureRect rect;
     TaError error;
     Image img = create_img(s, s);
     for (int i = 0; i < 16; i++) {
-        error = texture_atlas_add_get_rect(TA, i, img, 0, 0, &rect);
+        error = texture_atlas_add_get_rect(&TA, i, img, 0, 0, &rect);
         assert(!error);
     }
-    assert(TA->size == DEFAULT_TEXTURE_ATLAS_SIZE * 2);
-    error = texture_atlas_add_get_rect(TA, 16, img, 0, 0, &rect);
+    assert(TA.size == DEFAULT_TEXTURE_ATLAS_SIZE * 2);
+    error = texture_atlas_add_get_rect(&TA, 16, img, 0, 0, &rect);
     assert(error == TA_MAX_SIZE_EXCEEDED);
     UnloadImage(img);
     texture_atlas_destroy(&TA);
 }
 
 void test_overhanging_rect() {
-    TextureAtlas *TA = texture_atlas_create(8);
+    TextureAtlas TA = texture_atlas_create(8);
     TextureRect rect;
     TaError error;
     Image img;
     
     img = create_img(8, 2);
-    error = texture_atlas_add_get_rect(TA, 0, img, 0, 0, &rect);
+    error = texture_atlas_add_get_rect(&TA, 0, img, 0, 0, &rect);
     assert(!error);
     assert(rect.x == 0 && rect.y == 0);
     UnloadImage(img);
     
     img = create_img(4, 2);
-    error = texture_atlas_add_get_rect(TA, 1, img, 0, 0, &rect);
+    error = texture_atlas_add_get_rect(&TA, 1, img, 0, 0, &rect);
     assert(!error);
     assert(rect.x == 0 && rect.y == 2);
     UnloadImage(img);
 
     img = create_img(6, 2);
-    error = texture_atlas_add_get_rect(TA, 2, img, 0, 0, &rect);
+    error = texture_atlas_add_get_rect(&TA, 2, img, 0, 0, &rect);
     assert(!error);
     assert(rect.x == 0 && rect.y == 4);
     UnloadImage(img);
 
     img = create_img(2, 6);
-    error = texture_atlas_add_get_rect(TA, 3, img, 0, 0, &rect);
+    error = texture_atlas_add_get_rect(&TA, 3, img, 0, 0, &rect);
     assert(!error);
     assert(rect.x == 6 && rect.y == 2);
     UnloadImage(img);
@@ -130,18 +130,18 @@ void test_overhanging_rect() {
 }
 
 void test_same_key() {
-    TextureAtlas *TA = texture_atlas_create(8);
+    TextureAtlas TA = texture_atlas_create(8);
     Image img;
     TextureRect rect;
     TaError error;
 
     img = create_img(2, 2);
-    error = texture_atlas_add_get_rect(TA, 0, img, 0, 0, &rect);
+    error = texture_atlas_add_get_rect(&TA, 0, img, 0, 0, &rect);
     assert(!error);
     UnloadImage(img);
 
     img = create_img(4, 4);
-    error = texture_atlas_add_get_rect(TA, 0, img, 0, 0, &rect);
+    error = texture_atlas_add_get_rect(&TA, 0, img, 0, 0, &rect);
     assert(!error);
     assert(rect.w == 2 && rect.h == 2);
     UnloadImage(img);

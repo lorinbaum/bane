@@ -7,31 +7,6 @@
 #include <assert.h>
 #include <string.h>
 
-
-
-typedef struct {
-	uint32_t key; // 32 instead of 16 for easiser key generation: character keycode can be used in full
-	uint16_t x, y, w, h;
-    int16_t origin_x, origin_y; // Used to offset position of rendered texture.
-} TextureRect;
-
-#define RECTMAP_MAX_LOADFACTOR 0.6
-typedef enum { RM_OK = 0, RM_MAX_SIZE_REACHED = 1, RM_KEY_NOT_FOUND = 2 } RmError;
-
-// Open addressing hashmap with UINT16_MAX - 1 maximum entries
-typedef struct {
-    uint16_t max_entries;
-    uint16_t used;
-    TextureRect *entries;
-    uint32_t bucket_count;
-    uint16_t *buckets;
-} RectMap;
-
-RmError rectmap_create(uint16_t max_entries, RectMap *ret) __nonnull((2));
-RmError rectmap_get(RectMap map, uint32_t key, TextureRect *ret) __nonnull((3));
-RmError rectmap_put(RectMap *map, TextureRect rect) __nonnull((1));
-void rectmap_destroy(RectMap *map) __nonnull((1));
-
 // Indirection required to use __COUNTER__ and similar as argument.
 // Inspiration from linux kernel include/linux/minmax.h
 #define ___JOIN(a, b) a##b
@@ -165,19 +140,43 @@ void rectmap_destroy(RectMap *map) __nonnull((1));
 void ensure_fail(const char *file, int line, const char *func, const char *expr) __nonnull((1,3,4));
 #define ensure(expr) ((expr) ? (void) (0) : ensure_fail(__FILE__, __LINE__, __func__, #expr))
 
-typedef struct {
-    int x;
-    int y;
-} IntVec2;
+// TEXTURE ATLAS
 
-sb_declare(IntVec2);
-sb_declare(int_least32_t);
+typedef struct TextureRect {
+	uint32_t key; // 32 instead of 16 for easiser key generation: character keycode can be used in full
+	uint16_t x, y, w, h;
+    int16_t origin_x, origin_y; // Used to offset position of rendered texture.
+} TextureRect;
+
+#define RECTMAP_MAX_LOADFACTOR 0.6
+typedef enum RmError { RM_OK = 0, RM_MAX_SIZE_REACHED = 1, RM_KEY_NOT_FOUND = 2 } RmError;
+
+// Open addressing hashmap with UINT16_MAX - 1 maximum entries
+typedef struct RectMap {
+    uint16_t max_entries;
+    uint16_t used;
+    TextureRect *entries;
+    uint32_t bucket_count;
+    uint16_t *buckets;
+} RectMap;
+
+RmError rectmap_create(uint16_t max_entries, RectMap *ret) __nonnull((2));
+RmError rectmap_get(RectMap map, uint32_t key, TextureRect *ret) __nonnull((3));
+RmError rectmap_put(RectMap *map, TextureRect rect) __nonnull((1));
+void rectmap_destroy(RectMap *map) __nonnull((1));
 
 #define DEFAULT_TEXTURE_ATLAS_SIZE 64
 #define DEFAULT_SKYLINE_ANCHOR_CAP 32
 #define DEFAULT_TEXTURE_RECTS_CAP 64
 
-typedef struct {
+typedef struct IntVec2 {
+    int x;
+    int y;
+} IntVec2;
+
+sb_declare(IntVec2);
+
+typedef struct TextureAtlas {
     int channels;
     int size; // texture area is square of side length "size".
     int max_size; // hardware constrained.
@@ -191,12 +190,12 @@ typedef struct {
 typedef enum { TA_OK = 0, TA_MAX_SIZE_EXCEEDED = 1, TA_RECT_NOT_FOUND = 2 } TaError;
 
 // square packing area starts out small, then expands until it reaches a side length of max_size
-TextureAtlas* texture_atlas_create(int max_size); 
-void texture_atlas_destroy(TextureAtlas **texture_atlas) __nonnull((1));
+TextureAtlas texture_atlas_create(int max_size); 
+void texture_atlas_destroy(TextureAtlas *texture_atlas) __nonnull((1));
 
-// Add a new rect to your texture atlas or returns existing rect if key exists already.
+// Adds a new rect or returns existing rect if key exists already.
 TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect) __nonnull((1,6));
-TaError texture_atlas_get_rect(TextureAtlas *texture_atlas, uint32_t key, TextureRect *return_rect) __nonnull((1,3));
+TaError texture_atlas_get_rect(TextureAtlas texture_atlas, uint32_t key, TextureRect *return_rect) __nonnull((3));
 
 void texture_atlas_update_texture(TextureAtlas *texture_atlas) __nonnull((1));
 TaError texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) __nonnull((1));
@@ -274,12 +273,12 @@ Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_le
 #include "ft2build.h"
 #include FT_FREETYPE_H
 
-typedef struct {
+typedef struct GapBuffer {
     size_t cap, gap, offset;
     uint32_t *data;
 } GapBuffer;
 
-GapBuffer gb_create_from_text(char *text, size_t str_len);
+GapBuffer gb_create_from_text(const char *text, size_t str_len);
 GapBuffer gb_create(size_t cap);
 void gb_destroy(GapBuffer *gb) __nonnull((1));
 char *gb_encode(GapBuffer gb, size_t offset, size_t length);
@@ -289,54 +288,71 @@ void gb_insert_n(GapBuffer *gb, size_t index, uint32_t *values, size_t n) __nonn
 void gb_delete_n(GapBuffer *gb, size_t index, size_t n) __nonnull((1));
 uint32_t gb_get(GapBuffer gb, size_t index);
 
-typedef struct {
-    int_least32_t x, y, w, h, scroll_y; // scroll_y gets negative when scrolling down
-    GapBuffer gb;
-} TextBox;
-
-typedef struct {
-    FT_Face face;
-    uint_least32_t line_height;
-    // NOTE: text_selected_color is near-useless until blending is added and selection draws behind text.
-    Color text_color, text_selected_color, cursor_color, selection_color;
-} Style;
-
-typedef struct {
+typedef struct CursorLoc {
     size_t offset;
     bool pre_wrap;          // wrapping lines have two valid position for each offset. This control whether to render before or after wrap
     int_least32_t sticky_x; // x coordinate that persists across vertical movement
 } CursorLoc;
 
-typedef struct {
+typedef struct Cursor {
     CursorLoc loc;
-    CursorLoc sel_start;    // location where the selection - if any - started while loc is the cursor location (may be before or after sel_start)
-    bool sel_active;        // if false, sel_start is irrelevant
+    CursorLoc sel_origin;   // location where the selection - if any - started while loc is the cursor location (may be before or after sel_origin)
+    bool sel_active;        // if false, sel_origin is ignored
     bool update_sticky_x;   // set to true by movement functions that change sticky_x. sticky_x is not continuously updated, only when needed
     bool scroll_to;         // set to true to scroll to put cursor into view in next frame
 } Cursor;
 
-void draw_text(TextBox *box, Style style, TextureAtlas *atlas, Cursor *cursor) __nonnull((1,3,4));
+typedef struct Style {
+    FT_Face face;
+    uint_least32_t font_size, line_height;
+    // NOTE: text_selected_color is near-useless until blending is added and selection draws behind text.
+    Color text_color, text_selected_color, cursor_color, selection_color;
+} Style;
 
-void cursor_right(TextBox box, Cursor *cursor, bool selecting) __nonnull((2));
-void cursor_left(Cursor *cursor, bool selecting) __nonnull((1));
-void cursor_down(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
-void cursor_up(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
-void cursor_home(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
-void cursor_end(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
-void cursor_mouse(TextBox box, Style style, Cursor *cursor, int_least32_t x, int_least32_t y, bool selecting) __nonnull((3));
-void cursor_page_up(TextBox box, Style style, Cursor *cursor, bool selecting) __nonnull((3));
-void cursor_page_down(TextBox box, Style style, Cursor *cursor, bool selecting)  __nonnull((3));
-void cursor_next_word(TextBox box, Cursor *cursor, bool selecting) __nonnull((2));
-void cursor_prev_word(TextBox box, Cursor *cursor, bool selecting) __nonnull((2));
+typedef struct Context {
+    FT_Library library;
+    FT_Face face;
+    int_least32_t line_height, baseline_offset; // each in px
+    Color text_color, text_selected_color, cursor_color, selection_color;
+    TextureAtlas atlas;
+} Context;
 
-void cursor_write(TextBox *box, Cursor *cursor, uint32_t c) __nonnull((1,2));
-void cursor_backspace(TextBox *box, Cursor *cursor) __nonnull((1,2));
-void cursor_delete(TextBox *box, Cursor *cursor) __nonnull((1,2));
+Context *ctx_create();
+void ctx_load_style(Context *ctx, Style style);
+void ctx_destroy(Context *ctx);
 
-void cursor_copy(TextBox box, Cursor cursor);
-void cursor_paste(TextBox *box, Cursor *cursor) __nonnull((1,2));
-void cursor_cut(TextBox *box, Cursor *cursor) __nonnull((1,2));
+typedef struct TextBox {
+    int_least32_t x, y, w, h;
+    int_least32_t scroll_y; // Gets negative when scrolling down
+    GapBuffer gb;
+    Cursor cursor;
+} TextBox;
 
-void cursor_select_all(TextBox box, Cursor *cursor) __nonnull((2));
+TextBox textbox_create(int_least32_t x, int_least32_t y, int_least32_t w, int_least32_t h, const char* text);
+bool tb_hit(TextBox box, int_least32_t x, int_least32_t y);
+
+void tb_draw(TextBox *box, Context *ctx) __nonnull((1,2));
+
+void tb_right(TextBox *box, bool selecting);
+void tb_left(TextBox *box, bool selecting) __nonnull((1));
+void tb_down(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
+void tb_up(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
+void tb_home(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
+void tb_end(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
+void tb_mouse(TextBox *box, Context *ctx, int_least32_t x, int_least32_t y, bool selecting) __nonnull((1, 2));
+void tb_page_up(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
+void tb_page_down(TextBox *box, Context *ctx, bool selecting)  __nonnull((1, 2));
+void tb_next_word(TextBox *box, bool selecting) __nonnull((1));
+void tb_prev_word(TextBox *box, bool selecting) __nonnull((1));
+
+void tb_write(TextBox *box, uint32_t c) __nonnull((1));
+void tb_backspace(TextBox *box) __nonnull((1));
+void tb_delete(TextBox *box) __nonnull((1));
+
+void tb_copy(TextBox box);
+void tb_paste(TextBox *box) __nonnull((1));
+void tb_cut(TextBox *box) __nonnull((1));
+
+void tb_select_all(TextBox *box) __nonnull((1));
 
 #endif

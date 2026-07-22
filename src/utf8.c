@@ -22,7 +22,7 @@ static bool is_valid_utf8_codepoint(uint32_t codepoint) {
 
 static bool is_continuation_byte(unsigned char c) { return between(c, 0x80, 0xBF); }
 
-typedef enum { SEQ_OK = 0, SEQ_TRUNCATED = 1, SEQ_INVALID = 2 } SeqError;
+typedef enum SeqError { SEQ_OK = 0, SEQ_TRUNCATED = 1, SEQ_INVALID = 2 } SeqError;
 
 static SeqError utf8_sequence_length(const unsigned char *str, size_t max_len, uint_least8_t *sequence_len) {
 	assert(str != NULL);

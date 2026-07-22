@@ -3,24 +3,8 @@
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include "bane.h"
-#include "firasans_regular.c"
 
 int main(void) {
-    
-    // FREETYPE
-    FT_Error error;
-    FT_Library  library;
-    error = FT_Init_FreeType( &library );
-    assert(!error);
-    
-    FT_Face face;
-    error = FT_New_Memory_Face(library, (FT_Byte *) assets_FiraSans_Regular_ttf, assets_FiraSans_Regular_ttf_len, 0, &face);
-    assert(!error);
-    
-    error = FT_Set_Char_Size(face, 0, 20*64*SCALE, 72, 72 );
-    assert(!error);
-    
-    TextureAtlas *glyph_atlas = texture_atlas_create(4096);
     
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(800, 450, "Bane of my existence");
@@ -31,18 +15,18 @@ int main(void) {
     "assert(status == TA_OK);\n\n"
     "assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\na";
     
-    GapBuffer gb = gb_create_from_text(text, strlen(text));
-    Cursor cursor = { 0 };
-    TextBox textbox = { .x = 50, .y = 50, .w = GetScreenWidth() - 100, .h = 100, .gb = gb };
-
+    TextBox textbox = textbox_create(50, 50, GetScreenWidth() - 100, 100, text);
+    
+    Context *context = ctx_create();
     Style style = {
+        .font_size = 20,
         .cursor_color = WHITE,
-        .face = face,
         .line_height = 1,
         .selection_color = (Color) { 0xff, 0, 0, 0x60 },
         .text_color = (Color) { 0xe3, 0x88, 0x64, 0xff },
         .text_selected_color = (Color) { 0xe3, 0x88, 0x64, 0xff }
     };
+    ctx_load_style(context, style);
 
     TextBox *last_hit = NULL;
 
@@ -50,52 +34,52 @@ int main(void) {
         if (IsWindowResized()) textbox.w = GetScreenWidth() - 100;
         BeginDrawing();
         ClearBackground(BLACK);
-        draw_text(&textbox, style, glyph_atlas, &cursor);
+        tb_draw(&textbox, context);
         bool selecting = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
         bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
         if (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) {
-            if (ctrl) cursor_next_word(textbox, &cursor, selecting);
-            else cursor_right(textbox, &cursor, selecting);
+            if (ctrl) tb_next_word(&textbox, selecting);
+            else tb_right(&textbox, selecting);
         }
         if (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) {
-            if (ctrl) cursor_prev_word(textbox, &cursor, selecting);
-            else cursor_left(&cursor, selecting);
+            if (ctrl) tb_prev_word(&textbox, selecting);
+            else tb_left(&textbox, selecting);
         }
-        if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) cursor_down(textbox, style, &cursor, selecting); 
-        if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) cursor_up(textbox, style, &cursor, selecting);
-        if (IsKeyPressed(KEY_HOME) || IsKeyPressedRepeat(KEY_HOME)) cursor_home(textbox, style, &cursor, selecting);
-        if (IsKeyPressed(KEY_END) || IsKeyPressedRepeat(KEY_END)) cursor_end(textbox, style, &cursor, selecting);
+        if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) tb_down(&textbox, context, selecting); 
+        if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) tb_up(&textbox, context, selecting);
+        if (IsKeyPressed(KEY_HOME) || IsKeyPressedRepeat(KEY_HOME)) tb_home(&textbox, context, selecting);
+        if (IsKeyPressed(KEY_END) || IsKeyPressedRepeat(KEY_END)) tb_end(&textbox, context, selecting);
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             Vector2 pos = GetMousePosition();
             int_least32_t x = (int_least32_t) (pos.x * SCALE + 0.5), y = (int_least32_t) (pos.y * SCALE + 0.5);
-            if (x >= textbox.x && x < textbox.x + textbox.w && y >= textbox.y && y < textbox.y + textbox.h) {
+            if (tb_hit(textbox, x, y)) {
                 last_hit = &textbox;
-                cursor_mouse(textbox, style, &cursor, x, y, selecting);
+                tb_mouse(&textbox, context, x, y, selecting);
             } else last_hit = NULL;
         }
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
             Vector2 pos = GetMousePosition();
             int_least32_t x = (int_least32_t) (pos.x * SCALE + 0.5), y = (int_least32_t) (pos.y * SCALE + 0.5);
-            if (last_hit == &textbox) cursor_mouse(textbox, style, &cursor, x, y, true);
+            if (last_hit == &textbox) tb_mouse(&textbox, context, x, y, true);
         }
-        if (IsKeyPressed(KEY_PAGE_UP) || IsKeyPressedRepeat(KEY_PAGE_UP)) cursor_page_up(textbox, style, &cursor, selecting);
-        if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressedRepeat(KEY_PAGE_DOWN)) cursor_page_down(textbox, style, &cursor, selecting);
+        if (IsKeyPressed(KEY_PAGE_UP) || IsKeyPressedRepeat(KEY_PAGE_UP)) tb_page_up(&textbox, context, selecting);
+        if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressedRepeat(KEY_PAGE_DOWN)) tb_page_down(&textbox, context, selecting);
 
-        if (IsKeyPressed(KEY_C) && ctrl) cursor_copy(textbox, cursor);
-        if ((IsKeyPressed(KEY_V) || IsKeyPressedRepeat(KEY_V)) && ctrl) cursor_paste(&textbox, &cursor);
-        if (IsKeyPressed(KEY_X) && ctrl) cursor_cut(&textbox, &cursor);
+        if (IsKeyPressed(KEY_C) && ctrl) tb_copy(textbox);
+        if ((IsKeyPressed(KEY_V) || IsKeyPressedRepeat(KEY_V)) && ctrl) tb_paste(&textbox);
+        if (IsKeyPressed(KEY_X) && ctrl) tb_cut(&textbox);
         
-        if (IsKeyPressed(KEY_A) && ctrl) cursor_select_all(textbox, &cursor);
+        if (IsKeyPressed(KEY_A) && ctrl) tb_select_all(&textbox);
 
-        if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) cursor_backspace(&textbox, &cursor);
-        if (IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) cursor_delete(&textbox, &cursor);
+        if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) tb_backspace(&textbox);
+        if (IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) tb_delete(&textbox);
 
         if (IsKeyPressed(KEY_ENTER) || IsKeyPressedRepeat(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressedRepeat(KEY_KP_ENTER)) {
-            cursor_write(&textbox, &cursor, LF);
+            tb_write(&textbox, LF);
         }
         uint32_t c = GetCharPressed();
         while (c) {
-            cursor_write(&textbox, &cursor, c);
+            tb_write(&textbox, c);
             c = GetCharPressed();
         }
 
@@ -103,7 +87,7 @@ int main(void) {
         if (mouse_wheel_move) {
             Vector2 pos = GetMousePosition();
             int_least32_t x = (int_least32_t) (pos.x * SCALE + 0.5), y = (int_least32_t) (pos.y * SCALE + 0.5);
-            if (x >= textbox.x && x < textbox.x + textbox.w && y >= textbox.y && y < textbox.y + textbox.h) {
+            if (tb_hit(textbox, x, y)) {
                 textbox.scroll_y = min(0, textbox.scroll_y + (int_least32_t) (mouse_wheel_move * 160));
             }
         }
@@ -116,10 +100,8 @@ int main(void) {
     // ExportImage(glyph_atlas->image, "glyph_atlas.jpg");
     
     gb_destroy(&textbox.gb);
-    texture_atlas_destroy(&glyph_atlas);
+    ctx_destroy(context);
     CloseWindow();
-    FT_Done_Face(face);
-    FT_Done_FreeType(library);
 
     return 0;
 }
