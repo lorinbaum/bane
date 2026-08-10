@@ -5,16 +5,38 @@
 #define RECT_MAX_W 5
 #define RECT_MAX_H 5
 
+#define RAND_DIMS 128u
+#define RAND_GRAYS 256u
+// for reproducible golden test, values 1-5
+uint_least8_t rand_dims[RAND_DIMS] = {
+    5, 4, 2, 5, 1, 5, 4, 2, 1, 3, 4, 3, 5, 3, 2, 4, 5, 2, 4, 3, 2, 1, 2, 3, 3, 5, 1, 4, 4, 1, 4, 4,
+    3, 3, 3, 4, 2, 2, 2, 3, 5, 3, 3, 3, 5, 1, 3, 4, 4, 1, 1, 3, 4, 1, 3, 3, 3, 5, 4, 4, 3, 2, 1, 1,
+    1, 2, 1, 4, 5, 2, 2, 2, 4, 1, 4, 3, 4, 2, 5, 5, 5, 1, 4, 2, 1, 1, 5, 4, 3, 2, 4, 1, 3, 2, 1, 1,
+    2, 4, 4, 1, 4, 5, 3, 3, 1, 4, 5, 1, 2, 2, 3, 5, 3, 2, 1, 3, 4, 5, 1, 5, 5, 1, 3, 1, 2, 4, 1, 2
+};
+
+// shuffled unique gray values for golden test 0 - 255
+uint_least8_t rand_grays[RAND_GRAYS] = {
+    46 ,  23,  11, 155, 230, 236, 233,   1,  12,  86,   5, 126, 175, 150, 227, 253,  94, 208, 157,  70, 165, 185, 149, 100, 153, 187,  85,  39, 218,  28, 152,  20,
+    148,  50, 160, 141,  62,  76, 248, 210, 224, 112,  71, 102, 191,  59,  87, 129, 120, 114,  13, 154, 135, 180,  75, 137, 107, 246, 136,  58,  10, 119, 176, 212,
+    173,  17, 167, 231, 215, 243, 146, 163, 195,  18, 226,  79, 251,  77, 174, 139,  27,  96, 239, 209,   8,  37, 184, 159, 213, 147, 122, 229, 240, 151, 197,  47,
+    138, 123,  26,  84, 179, 161, 189, 199,  63,   0,  69,  65,  51, 108,  21, 200,  34, 222, 250, 202, 116,  38,  61, 203, 211,  49, 205,  93,  74, 162, 134,   6,
+    56,  121,  52, 142,  95, 255, 204, 110, 188,  16,  30,  92,  55, 225, 206,  32, 168,  80, 103,  31,  73, 140,   3, 245, 223, 125, 128, 247, 228, 214,  22,  82,
+    219,  45, 201,  33,  24,  97, 252, 220, 217, 132,  53, 127, 124, 254, 143,  29,  35,  98,  25,  42, 238,  14, 133, 145, 111, 241, 106, 164, 169, 181, 104, 234,
+    183, 198,  83, 166, 172,  44, 249,  60, 170,  91, 113, 216, 115, 193, 196, 144,  99, 105, 118, 190,  41, 109, 117, 182, 177,  68,  40,  15, 235,  81, 221, 194,
+    19,  156, 101,   4,   2, 131, 192,  36, 242, 244,  48, 232,  72,  67,  43, 237,  57, 130,  88,  89, 178,  78,  66,   7, 207, 171,   9, 158, 186,  64,  54,  90,
+};
+
 Image create_img(int w, int h) {
     Image img = {malloc(w*h), w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
     ensure(img.data != NULL);
     return img;
 }
 
-void add_dummy_rect(TextureAtlas *texture_atlas, uint32_t seed, unsigned int count) {
-    SetRandomSeed(seed);
+void add_dummy_rect(TextureAtlas *texture_atlas, unsigned int count) {
     for (unsigned int key = 0; key < count; key++) {
-        int w = GetRandomValue(1, RECT_MAX_W), h = GetRandomValue(1, RECT_MAX_H), gray = GetRandomValue(1, 255);
+        uint_least8_t w = rand_dims[key % RAND_DIMS], h = rand_dims[(key + 1) % RAND_DIMS];
+        uint_least8_t gray = rand_grays[key % RAND_GRAYS];
         TextureRect rect;
         Image img = create_img(w, h);
         ImageClearBackground(&img, (Color) {gray, gray, gray, 255});
@@ -29,7 +51,7 @@ void test_skyline_overlap() {
     TaError error;
     TextureRect rect, comp_rect;
     unsigned int count = 400;
-    add_dummy_rect(&TA, 5, count);
+    add_dummy_rect(&TA, count);
     for (unsigned int i = 0; i < count; i++) {
         error = texture_atlas_get_rect(TA, i, &rect);
         assert(!error);
@@ -52,7 +74,7 @@ void test_skyline_overlap() {
 
 void test_golden_skyline() {
     TextureAtlas TA = texture_atlas_create(128);
-    add_dummy_rect(&TA, 1, 600);
+    add_dummy_rect(&TA, 800);
     const char *golden_path = TEST_DATA_DIR "/golden_skyline.png";
     const char *fail_path = TEST_DATA_DIR "/golden_skyline_FAILED.png";
     if (FileExists(golden_path)) {
