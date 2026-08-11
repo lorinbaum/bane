@@ -16,7 +16,7 @@ static uint32_t murmur3_finalize(uint32_t x) {
 
 RmError rectmap_create(uint16_t max_entries, RectMap *ret) {
     if (max_entries == UINT16_MAX ) { return RM_MAX_SIZE_REACHED; }
-    uint32_t bucket_count = (uint32_t) ceil(max_entries / RECTMAP_MAX_LOADFACTOR);
+    uint32_t bucket_count = (uint32_t) (max_entries / RECTMAP_MAX_LOADFACTOR + 1);
     RectMap map = (RectMap) {
         .max_entries = max_entries,
         .used = 0,
@@ -47,7 +47,7 @@ RmError rectmap_get(RectMap map, uint32_t key, TextureRect *ret) {
 
 static void rectmap_enlarge(RectMap *map) {
     map->max_entries = min(UINT16_MAX - 1, map->max_entries * 2);
-    map->bucket_count = (uint32_t) ceil(map->max_entries / RECTMAP_MAX_LOADFACTOR);
+    map->bucket_count = (uint32_t) (map->max_entries / RECTMAP_MAX_LOADFACTOR + 1);
     void *temp = realloc(map->entries, map->max_entries * sizeof(TextureRect));
     ensure(temp != NULL);
     map->entries = temp;
@@ -115,11 +115,8 @@ TextureAtlas texture_atlas_create(int max_size) {
             .data = calloc(1, texture_atlas.size * texture_atlas.size),
             .width = texture_atlas.size,
             .height = texture_atlas.size,
-            .mipmaps = 1,
-            .format = PIXELFORMAT_UNCOMPRESSED_GRAYSCALE
-        },
-        .image_changed = true,
-        .texture = (Texture2D) { 0 } // texture.id = 0 means UnloadTexture has no effect
+            .format = IMAGE_FORMAT_ALPHA
+        }
     };
     ensure(texture_atlas.image.data != NULL);
     sb_append(&texture_atlas.skyline_anchors, (IntVec2) {0, 0});
@@ -132,8 +129,7 @@ TextureAtlas texture_atlas_create(int max_size) {
 void texture_atlas_destroy(TextureAtlas *texture_atlas) {
     sb_destroy(&texture_atlas->skyline_anchors);
     rectmap_destroy(&texture_atlas->rects);
-    UnloadTexture(texture_atlas->texture);
-    UnloadImage(texture_atlas->image);
+    free(texture_atlas->image.data);
     memset(texture_atlas, 0, sizeof(TextureAtlas));
 }
 
@@ -179,7 +175,7 @@ static void update_anchors(sb_IntVec2 *anchors, Anchor best, int w, int h) {
     if (sb_get(*anchors, best.index + 1).x > best.x + w) { sb_insert(anchors, next_i, (IntVec2) {best.x + w, latest_y}); }
 }
 
-static TaError texture_atlas_resize(int *size, int max_size, sb_IntVec2 *anchors) {
+static TaError texture_atlas_resize(size_t *size, size_t max_size, sb_IntVec2 *anchors) {
     assert(size != NULL && anchors != NULL);
     if (*size == max_size) { return TA_MAX_SIZE_EXCEEDED; }
     *size = min(max_size, *size * 2);
@@ -211,7 +207,7 @@ TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Im
             assert(anchors->count >= 2);
             assert(texture_atlas->max_size >= image.width && image.width > 0 && texture_atlas->max_size >= image.height && image.height > 0);
             bool found;
-            int old_size = texture_atlas->size;
+            size_t old_size = texture_atlas->size;
             while (true) { // retry after resize
                 assert(texture_atlas->size <= texture_atlas->max_size);
                 found = find_best_anchor(anchors, texture_atlas->size, texture_atlas->max_size, image.width, &best);
@@ -222,14 +218,13 @@ TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Im
                     rect = (TextureRect) {key, best.x, best.y, image.width, image.height, origin_x, origin_y};
                     rectmap_put(&texture_atlas->rects, rect);
                     update_anchors(anchors, best, image.width, image.height);
-                    if (old_size < texture_atlas->size) {
-                        ImageResizeCanvas(&texture_atlas->image, texture_atlas->size, texture_atlas->size, 0, 0, (Color) {0, 0, 0, 0});
+                    if (old_size < texture_atlas->size) { 
+                        image_resize(&texture_atlas->image, texture_atlas->size, texture_atlas->size, 0, 0, (Color) {0, 0, 0, 255});
                     }
-                    ImageDraw(&texture_atlas->image, image,
-                        (Rectangle) {0, 0, image.width, image.height}, (Rectangle) {rect.x, rect.y, rect.w, rect.h},
+                    image_draw(texture_atlas->image, image,
+                        (Rectangle) {rect.x, rect.y, rect.w, rect.h}, (Rectangle) {0, 0, image.width, image.height},
                         (Color) {255, 255, 255, 255}
                     );
-                    texture_atlas->image_changed = true;
                     break;
                 }
             }  
@@ -240,32 +235,18 @@ TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Im
     return error;
 }
 
-void texture_atlas_update_texture(TextureAtlas *texture_atlas) {
-    assert(IsImageValid(texture_atlas->image));
-    if (
-        texture_atlas->image.width == texture_atlas->texture.width &&
-        texture_atlas->image.height == texture_atlas->texture.height &&
-        texture_atlas->image.format == texture_atlas->texture.format
-    ) { UpdateTexture(texture_atlas->texture, texture_atlas->image.data);
-    } else {
-        UnloadTexture(texture_atlas->texture);
-        texture_atlas->texture = LoadTextureFromImage(texture_atlas->image);
-        assert(IsTextureValid(texture_atlas->texture));
-        SetTextureFilter(texture_atlas->texture, TEXTURE_FILTER_POINT);
-    }
-}
-
-TaError texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) {
+TaError texture_atlas_draw(Image dest, Rectangle text_rect, TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) {
     TextureRect rect;
     TaError error = texture_atlas_get_rect(*texture_atlas, key, &rect);
     if (error == TA_RECT_NOT_FOUND) { return error; }
     if (rect.w == 0 || rect.h == 0) { return TA_OK; } // nothing to draw
-    Rectangle src = { rect.x, rect.y, rect.w, rect.h };
-    Rectangle dest = { x + rect.origin_x, y - rect.origin_y, rect.w, rect.h };
-    if (texture_atlas->image_changed) {
-        texture_atlas_update_texture(texture_atlas);
-        texture_atlas->image_changed = false;
-    }
-    DrawTexturePro(texture_atlas->texture, src, dest, (Vector2) {0, 0}, 0, tint);
+    Rectangle src_rect = { rect.x, rect.y, rect.w, rect.h };
+    Rectangle dest_rect = { x + rect.origin_x, y - rect.origin_y, rect.w, rect.h };
+    // printf("textbox: %i,%i, %ix%i\n", text_rect.x, text_rect.y, text_rect.width, text_rect.height);
+    // printf("destrect: %i,%i, %ix%i\n", dest_rect.x, dest_rect.y, dest_rect.width, dest_rect.height);
+    rect_fit_box(text_rect, &dest_rect, &src_rect); // don't draw outside text box
+    // printf("destrect new: %i,%i, %ix%i\n", dest_rect.x, dest_rect.y, dest_rect.width, dest_rect.height);
+    // printf("\n");
+    image_draw(dest, texture_atlas->image, dest_rect, src_rect, tint);
     return TA_OK;
 }

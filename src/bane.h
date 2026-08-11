@@ -3,9 +3,11 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include "raylib.h"
 #include <assert.h>
 #include <string.h>
+#include <stdbool.h>
+#define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
+#include "SDL3/SDL.h"
 
 // Indirection required to use __COUNTER__ and similar as argument.
 // Inspiration from linux kernel include/linux/minmax.h
@@ -174,16 +176,27 @@ typedef struct IntVec2 {
     int y;
 } IntVec2;
 
+// IMAGE
+typedef struct Rectangle { int_least32_t x, y, width, height; } Rectangle;
+void rect_fit_box(Rectangle box, Rectangle *fit, Rectangle *linked_fit) __nonnull((2));
+
+typedef enum ImageFormat { IMAGE_FORMAT_ALPHA, IMAGE_FORMAT_RGB } ImageFormat;
+typedef struct Image { uint8_t *data; size_t width, height; ImageFormat format; } Image;
+typedef struct Color { float r, g, b, a; } Color;
+
+uint8_t get_pixel_data_size(ImageFormat format);
+void image_draw(Image dest, Image src, Rectangle dest_rect, Rectangle src_rect, Color tint);
+void image_draw_rect(Image dest, Rectangle rect, Color color);
+void image_resize(Image *image, int_least32_t new_w, int_least32_t new_h, int_least32_t offset_x, int_least32_t offset_y, Color color);
+
 sb_declare(IntVec2);
 
 typedef struct TextureAtlas {
-    int channels;
-    int size; // texture area is square of side length "size".
-    int max_size; // hardware constrained.
+    size_t size; // texture area is square of side length "size".
+    size_t max_size; // hardware constrained.
     sb_IntVec2 skyline_anchors;
     RectMap rects;
     Image image; // Holds texture on CPU.
-    Texture2D texture; // raylib texture on GPU. Used for drawing.
     bool image_changed;
 } TextureAtlas;
 
@@ -197,8 +210,7 @@ void texture_atlas_destroy(TextureAtlas *texture_atlas) __nonnull((1));
 TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect) __nonnull((1,6));
 TaError texture_atlas_get_rect(TextureAtlas texture_atlas, uint32_t key, TextureRect *return_rect) __nonnull((3));
 
-void texture_atlas_update_texture(TextureAtlas *texture_atlas) __nonnull((1));
-TaError texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) __nonnull((1));
+TaError texture_atlas_draw(Image dest, Rectangle text_rect, TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) __nonnull((3));
 
 // UTF8
 
@@ -333,7 +345,8 @@ bool tb_hit(TextBox box, int_least32_t x, int_least32_t y);
 
 void tb_draw(TextBox *box, Context *ctx) __nonnull((1,2));
 
-void tb_right(TextBox *box, bool selecting);
+void tb_right(TextBox *box, bool selecting) __nonnull((1));
+void tb_right_n(TextBox *box, size_t n, bool selecting) __nonnull((1));
 void tb_left(TextBox *box, bool selecting) __nonnull((1));
 void tb_down(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
 void tb_up(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
@@ -346,6 +359,7 @@ void tb_next_word(TextBox *box, bool selecting) __nonnull((1));
 void tb_prev_word(TextBox *box, bool selecting) __nonnull((1));
 
 void tb_write(TextBox *box, uint32_t c) __nonnull((1));
+void tb_write_n(TextBox *box, uint32_t *c, size_t n) __nonnull((1, 2));
 void tb_backspace(TextBox *box) __nonnull((1));
 void tb_delete(TextBox *box) __nonnull((1));
 
@@ -354,5 +368,7 @@ void tb_paste(TextBox *box) __nonnull((1));
 void tb_cut(TextBox *box) __nonnull((1));
 
 void tb_select_all(TextBox *box) __nonnull((1));
+
+extern Image framebuffer;
 
 #endif

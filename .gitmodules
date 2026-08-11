@@ -1,9 +1,6 @@
 [submodule "extern/freetype"]
 	path = extern/freetype
 	url = https://gitlab.freedesktop.org/freetype/freetype.git
-[submodule "extern/raylib"]
-	path = extern/raylib
-	url = https://github.com/raysan5/raylib.git
-[submodule "extern/glfw"]
-	path = extern/glfw
-	url = https://github.com/glfw/glfw.git
+[submodule "extern/sdl"]
+	path = extern/sdl
+	url = https://github.com/libsdl-org/SDL.git
