@@ -33,61 +33,41 @@ void image_draw(Image dest, Image src, Rectangle dest_rect, Rectangle src_rect, 
     uint8_t *src_row = src.data + (src_rect.y * src.width + src_rect.x) * px_bytes_src;
     uint8_t *dest_row = dest.data + (dest_rect.y * dest.width + dest_rect.x) * px_bytes_dest;
 
-    if (tint.a == 255) {
-        if (dest.format == src.format) {
-            for (int_least32_t y = 0; y < src_rect.height; y++, src_row += row_bytes_src, dest_row += row_bytes_dest) {
-                memmove(dest_row, src_row, src_rect.width * px_bytes_src);
+    if (dest.format == IMAGE_FORMAT_RGB && src.format == IMAGE_FORMAT_RGB) {
+        float blend_dest = 1 - tint.a / 255.0f;
+        float blend_r = tint.r / 255.0f * tint.a / 255.0f;
+        float blend_g = tint.g / 255.0f * tint.a / 255.0f;
+        float blend_b = tint.b / 255.0f * tint.a / 255.0f;
+        for (int_least32_t y = 0; y < src_rect.height; y++, src_row += row_bytes_src, dest_row += row_bytes_dest) {
+            uint8_t *src_p = src_row, *dest_p = dest_row;
+            for (int_least32_t x = 0; x < src_rect.width; x++, dest_p += px_bytes_dest, src_p += px_bytes_src) {
+                *dest_p       = *dest_p       * blend_dest + *src_p       * blend_r + .5;
+                *(dest_p + 1) = *(dest_p + 1) * blend_dest + *(src_p + 1) * blend_g + .5;
+                *(dest_p + 2) = *(dest_p + 2) * blend_dest + *(src_p + 2) * blend_b + .5;
             }
-        } else {
-            assert(dest.format == IMAGE_FORMAT_RGB && src.format == IMAGE_FORMAT_ALPHA);
-            float blend_r = tint.r / 255.0f;
-            float blend_g = tint.g / 255.0f;
-            float blend_b = tint.b / 255.0f;
-            for (int_least32_t y = 0; y < src_rect.height; y++, src_row += row_bytes_src, dest_row += row_bytes_dest) {
-                uint8_t *src_p = src_row, *dest_p = dest_row;
-                for (int_least32_t x = 0; x < src_rect.width; x++, dest_p += px_bytes_dest, src_p += px_bytes_src) {
-                    float blend_src = *src_p / 255.0f;
-                    float blend_dest = 1 - blend_src;
-                    *dest_p       = *dest_p       * blend_dest + blend_src * *src_p * blend_r;
-                    *(dest_p + 1) = *(dest_p + 1) * blend_dest + blend_src * *src_p * blend_g;
-                    *(dest_p + 2) = *(dest_p + 2) * blend_dest + blend_src * *src_p * blend_b;
-                }
+        }
+    } else if (dest.format == IMAGE_FORMAT_RGB && src.format == IMAGE_FORMAT_ALPHA) {
+        float a = tint.a / 255.0f;
+        for (int_least32_t y = 0; y < src_rect.height; y++, src_row += row_bytes_src, dest_row += row_bytes_dest) {
+            uint8_t *src_p = src_row, *dest_p = dest_row;
+            for (int_least32_t x = 0; x < src_rect.width; x++, dest_p += px_bytes_dest, src_p += px_bytes_src) {
+                float blend_src = a * *src_p / 255.0f;
+                float blend_dest = 1 - blend_src;
+                *dest_p       = *dest_p       * blend_dest + blend_src * tint.r + .5;
+                *(dest_p + 1) = *(dest_p + 1) * blend_dest + blend_src * tint.g + .5;
+                *(dest_p + 2) = *(dest_p + 2) * blend_dest + blend_src * tint.b + .5;
             }
         }
     } else {
-        float blend_dest = 1 - tint.a / 255.0f;
-        if (dest.format == IMAGE_FORMAT_RGB && src.format == IMAGE_FORMAT_RGB) {
-            float blend_r = tint.r / 255.0f * tint.a / 255.0f;
-            float blend_g = tint.g / 255.0f * tint.a / 255.0f;
-            float blend_b = tint.b / 255.0f * tint.a / 255.0f;
-            for (int_least32_t y = 0; y < src_rect.height; y++, src_row += row_bytes_src, dest_row += row_bytes_dest) {
-                uint8_t *src_p = src_row, *dest_p = dest_row;
-                for (int_least32_t x = 0; x < src_rect.width; x++, dest_p += px_bytes_dest, src_p += px_bytes_src) {
-                    *dest_p       = *dest_p       * blend_dest + *src_p       * blend_r;
-                    *(dest_p + 1) = *(dest_p + 1) * blend_dest + *(src_p + 1) * blend_g;
-                    *(dest_p + 2) = *(dest_p + 2) * blend_dest + *(src_p + 2) * blend_b;
-                }
-            }
-        } else if (dest.format == IMAGE_FORMAT_RGB && src.format == IMAGE_FORMAT_ALPHA) {
-            float blend_r = tint.r / 255.0f * tint.a / 255.0f;
-            float blend_g = tint.g / 255.0f * tint.a / 255.0f;
-            float blend_b = tint.b / 255.0f * tint.a / 255.0f;
-            for (int_least32_t y = 0; y < src_rect.height; y++, src_row += row_bytes_src, dest_row += row_bytes_dest) {
-                uint8_t *src_p = src_row, *dest_p = dest_row;
-                for (int_least32_t x = 0; x < src_rect.width; x++, dest_p += px_bytes_dest, src_p += px_bytes_src) {
-                    *dest_p       = *dest_p       * blend_dest + *src_p * blend_r;
-                    *(dest_p + 1) = *(dest_p + 1) * blend_dest + *src_p * blend_g;
-                    *(dest_p + 2) = *(dest_p + 2) * blend_dest + *src_p * blend_b;
-                }
-            }
-        } else {
-            assert(dest.format == IMAGE_FORMAT_ALPHA && src.format == IMAGE_FORMAT_ALPHA);
-            float blend_src = tint.a / 255.0f;
-            for (int_least32_t y = 0; y < src_rect.height; y++, src_row += row_bytes_src, dest_row += row_bytes_dest) {
-                uint8_t *src_p = src_row, *dest_p = dest_row;
-                for (int_least32_t x = 0; x < src_rect.width; x++, dest_p += px_bytes_dest, src_p += px_bytes_src) {
-                    *dest_p = *dest_p * blend_dest + *src_p * blend_src;
-                }
+        assert(dest.format == IMAGE_FORMAT_ALPHA && src.format == IMAGE_FORMAT_ALPHA);
+        float gray = (tint.r + tint.g + tint.b) / 3.0f;
+        float a = tint.a / 255.0f;
+        for (int_least32_t y = 0; y < src_rect.height; y++, src_row += row_bytes_src, dest_row += row_bytes_dest) {
+            uint8_t *src_p = src_row, *dest_p = dest_row;
+            for (int_least32_t x = 0; x < src_rect.width; x++, dest_p += px_bytes_dest, src_p += px_bytes_src) {
+                float blend_src = a * *src_p / 255.0f;
+                float blend_dest = 1 - blend_src;
+                *dest_p = *dest_p * blend_dest + blend_src * gray + .5;
             }
         }
     }

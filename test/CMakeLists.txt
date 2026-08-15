@@ -8,3 +8,8 @@ add_executable(test_utf8 test_utf8.c)
 target_include_directories(test_utf8 PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_utf8 PRIVATE core)
 add_test(utf8 test_utf8)
+
+add_executable(test_image test_image.c)
+target_include_directories(test_image PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_image PRIVATE core)
+add_test(image test_image)
