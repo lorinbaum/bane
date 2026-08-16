@@ -275,8 +275,7 @@ static void draw_char(Rectangle box, FT_Face face, TextureAtlas *atlas, uint32_t
         FT_Error error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER);
         assert(!error);
         assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported
-        Image image = (Image) {.data = (uint8_t *) slot->bitmap.buffer, .format = IMAGE_FORMAT_ALPHA,
-            .width = slot->bitmap.width, .height = slot->bitmap.rows};
+        Image image = image_create_from_data(slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, IMAGE_FORMAT_ALPHA);
         ta_error = texture_atlas_add_get_rect(atlas, glyph_index, image, slot->bitmap_left, slot->bitmap_top, &rect);
         assert(!ta_error);
     }

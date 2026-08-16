@@ -7,9 +7,9 @@ void ensure_fail(const char *file, int line, const char *func, const char *expr)
     abort();
 }
 
+bool color_is_valid(Color c) { return c.r >= 0 && c.r <= 255 && c.g >= 0 && c.g <= 255 && c.b >= 0 && c.b <= 255 && c.a >= 0 && c.a <= 255;}
+
 void rect_fit_box(Rectangle box, Rectangle *fit, Rectangle *linked_fit) {
-    // transform fit to fit box.
-    // if linked_fit is not NULL, transformations applied to fit also apply to linked_fit, but linked_fit isn't evaluated to fit box
     Rectangle temp = {0}; // store transformations in temp. apply to fit and to linked_fit if applicable
     if (fit->x < box.x) { temp.width += fit->x - box.x; temp.x += box.x - fit->x; }
     if (fit->y < box.y) { temp.height += fit->y - box.y; temp.y += box.y - fit->y; }

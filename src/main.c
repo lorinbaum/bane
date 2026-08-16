@@ -139,19 +139,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         }
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
             // NOTE: event -> window.data don't hold updated dimensions but what was entered when creating the window
-            int w, h;
-            if (!SDL_GetRenderOutputSize(renderer, &w, &h)) {
+            uint w, h;
+            if (!SDL_GetRenderOutputSize(renderer, (int *) &w, (int *) &h)) {
                 SDL_Log("Couldn't GetRenderOutputSize: %s", SDL_GetError());
                 return SDL_APP_FAILURE;
             }
 
             bool resize = false;
-            if ((size_t) w > framebuffer_max_width) {
+            if (w > framebuffer_max_width) {
                 if (w < WINDOW_WIDTH_BASE) framebuffer_max_width = WINDOW_WIDTH_BASE;
                 else framebuffer_max_width = ((size_t) 1 << (size_t) ceilf(log2f((float) w / WINDOW_WIDTH_BASE))) * WINDOW_WIDTH_BASE;
                 resize = true;
             }
-            if ((size_t) h > framebuffer_max_height) {
+            if (h > framebuffer_max_height) {
                 if (w < WINDOW_HEIGHT_BASE) framebuffer_max_height = WINDOW_HEIGHT_BASE;
                 else framebuffer_max_height = ((size_t) 1 << (size_t) ceilf(log2f((float) h / WINDOW_HEIGHT_BASE))) * WINDOW_HEIGHT_BASE;
                 resize = true;
@@ -167,8 +167,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
                 }
             }
 
-            framebuffer.width = (size_t) w;
-            framebuffer.height = (size_t) h;
+            framebuffer.width = w;
+            framebuffer.height = h;
 
             textbox.w = w - 100;
             // textbox.h = h - 100;

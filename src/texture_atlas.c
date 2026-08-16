@@ -129,7 +129,7 @@ TextureAtlas texture_atlas_create(int max_size) {
 void texture_atlas_destroy(TextureAtlas *texture_atlas) {
     sb_destroy(&texture_atlas->skyline_anchors);
     rectmap_destroy(&texture_atlas->rects);
-    free(texture_atlas->image.data);
+    image_destroy(&texture_atlas->image);
     memset(texture_atlas, 0, sizeof(TextureAtlas));
 }
 
@@ -219,9 +219,11 @@ TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Im
                     rectmap_put(&texture_atlas->rects, rect);
                     update_anchors(anchors, best, image.width, image.height);
                     if (old_size < texture_atlas->size) { 
-                        image_resize(&texture_atlas->image, texture_atlas->size, texture_atlas->size, 0, 0, (Color) {0, 0, 0, 255});
+                        Image resized = image_resize(texture_atlas->image, texture_atlas->size, texture_atlas->size, 0, 0, (Color) {0, 0, 0, 255});
+                        image_destroy(&texture_atlas->image);
+                        texture_atlas->image = resized;
                     }
-                    image_draw(texture_atlas->image, image,
+                    image_draw_tint(texture_atlas->image, image,
                         (Rectangle) {rect.x, rect.y, rect.w, rect.h}, (Rectangle) {0, 0, image.width, image.height},
                         (Color) {255, 255, 255, 255}
                     );
@@ -242,11 +244,7 @@ TaError texture_atlas_draw(Image dest, Rectangle text_rect, TextureAtlas *textur
     if (rect.w == 0 || rect.h == 0) { return TA_OK; } // nothing to draw
     Rectangle src_rect = { rect.x, rect.y, rect.w, rect.h };
     Rectangle dest_rect = { x + rect.origin_x, y - rect.origin_y, rect.w, rect.h };
-    // printf("textbox: %i,%i, %ix%i\n", text_rect.x, text_rect.y, text_rect.width, text_rect.height);
-    // printf("destrect: %i,%i, %ix%i\n", dest_rect.x, dest_rect.y, dest_rect.width, dest_rect.height);
     rect_fit_box(text_rect, &dest_rect, &src_rect); // don't draw outside text box
-    // printf("destrect new: %i,%i, %ix%i\n", dest_rect.x, dest_rect.y, dest_rect.width, dest_rect.height);
-    // printf("\n");
-    image_draw(dest, texture_atlas->image, dest_rect, src_rect, tint);
+    image_draw_tint(dest, texture_atlas->image, dest_rect, src_rect, tint);
     return TA_OK;
 }

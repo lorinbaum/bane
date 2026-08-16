@@ -63,18 +63,12 @@ SDL_Color grayscale_ramp[256] = {
     {248, 248, 248, 255}, {249, 249, 249, 255}, {250, 250, 250, 255}, {251, 251, 251, 255}, {252, 252, 252, 255}, {253, 253, 253, 255}, {254, 254, 254, 255}, {255, 255, 255, 255}
 };
 
-Image create_img(int w, int h) {
-    Image img = {.data = malloc(w * h), .format = IMAGE_FORMAT_ALPHA, .width = w, .height =h};
-    ensure(img.data != NULL);
-    return img;
-}
-
 void add_dummy_rect(TextureAtlas *texture_atlas, unsigned int count) {
     for (unsigned int key = 0; key < count; key++) {
         uint_least8_t w = rand_dims[key % RAND_DIMS], h = rand_dims[(key + 1) % RAND_DIMS];
         uint_least8_t gray = rand_grays[key % RAND_GRAYS];
         TextureRect rect;
-        Image img = create_img(w, h);
+        Image img = image_create(w, h, IMAGE_FORMAT_ALPHA);
         image_draw_rect(img, (Rectangle) {0, 0, img.width, img.height}, (Color) {gray, gray, gray, 255});
         TaError error = texture_atlas_add_get_rect(texture_atlas, key, img, 0, 0, &rect);
         if (error){
@@ -82,7 +76,7 @@ void add_dummy_rect(TextureAtlas *texture_atlas, unsigned int count) {
             fflush(stdout);
         } 
         assert(!error);
-        free(img.data);
+        image_destroy(&img);
     }
 }
 
@@ -166,7 +160,7 @@ void test_atlas_expand() {
     const int s = DEFAULT_TEXTURE_ATLAS_SIZE / 2;
     TextureRect rect;
     TaError error;
-    Image img = create_img(s, s);
+    Image img = image_create(s, s, IMAGE_FORMAT_ALPHA);
     for (int i = 0; i < 16; i++) {
         error = texture_atlas_add_get_rect(&TA, i, img, 0, 0, &rect);
         assert(!error);
@@ -174,7 +168,7 @@ void test_atlas_expand() {
     assert(TA.size == DEFAULT_TEXTURE_ATLAS_SIZE * 2);
     error = texture_atlas_add_get_rect(&TA, 16, img, 0, 0, &rect);
     assert(error == TA_MAX_SIZE_EXCEEDED);
-    free(img.data);
+    image_destroy(&img);
     texture_atlas_destroy(&TA);
 }
 
@@ -184,29 +178,29 @@ void test_overhanging_rect() {
     TaError error;
     Image img;
     
-    img = create_img(8, 2);
+    img = image_create(8, 2, IMAGE_FORMAT_ALPHA);
     error = texture_atlas_add_get_rect(&TA, 0, img, 0, 0, &rect);
     assert(!error);
     assert(rect.x == 0 && rect.y == 0);
-    free(img.data);
+    image_destroy(&img);
     
-    img = create_img(4, 2);
+    img = image_create(4, 2, IMAGE_FORMAT_ALPHA);
     error = texture_atlas_add_get_rect(&TA, 1, img, 0, 0, &rect);
     assert(!error);
     assert(rect.x == 0 && rect.y == 2);
-    free(img.data);
+    image_destroy(&img);
 
-    img = create_img(6, 2);
+    img = image_create(6, 2, IMAGE_FORMAT_ALPHA);
     error = texture_atlas_add_get_rect(&TA, 2, img, 0, 0, &rect);
     assert(!error);
     assert(rect.x == 0 && rect.y == 4);
-    free(img.data);
+    image_destroy(&img);
 
-    img = create_img(2, 6);
+    img = image_create(2, 6, IMAGE_FORMAT_ALPHA);
     error = texture_atlas_add_get_rect(&TA, 3, img, 0, 0, &rect);
     assert(!error);
     assert(rect.x == 6 && rect.y == 2);
-    free(img.data);
+    image_destroy(&img);
 
     texture_atlas_destroy(&TA);
 }
@@ -217,16 +211,16 @@ void test_same_key() {
     TextureRect rect;
     TaError error;
 
-    img = create_img(2, 2);
+    img = image_create(2, 2, IMAGE_FORMAT_ALPHA);
     error = texture_atlas_add_get_rect(&TA, 0, img, 0, 0, &rect);
     assert(!error);
-    free(img.data);
+    image_destroy(&img);
 
-    img = create_img(4, 4);
+    img = image_create(4, 4, IMAGE_FORMAT_ALPHA);
     error = texture_atlas_add_get_rect(&TA, 0, img, 0, 0, &rect);
     assert(!error);
     assert(rect.w == 2 && rect.h == 2);
-    free(img.data);
+    image_destroy(&img);
     
     texture_atlas_destroy(&TA);
 }

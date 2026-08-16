@@ -15,7 +15,16 @@
 #define __JOIN(a, b) ___JOIN(a, b)
 #define __UNIQUE __JOIN(_unique_, __COUNTER__)
 
-// STRETCHY BUFFERS
+// HELPERS
+
+typedef struct Rectangle { int_least32_t x, y, width, height; } Rectangle;
+/**
+ * Transform fit to fit box.
+ * if linked_fit is not NULL, transformations applied to fit also apply to linked_fit, but linked_fit isn't evaluated to fit box
+ */
+void rect_fit_box(Rectangle box, Rectangle *fit, Rectangle *linked_fit) __nonnull((2));
+
+// stretchy buffers
 
 #define sb_declare(type) typedef struct { type *items; size_t count, cap; } __JOIN(sb_, type)
 
@@ -142,6 +151,49 @@
 void ensure_fail(const char *file, int line, const char *func, const char *expr) __nonnull((1,3,4));
 #define ensure(expr) ((expr) ? (void) (0) : ensure_fail(__FILE__, __LINE__, __func__, #expr))
 
+// IMAGE
+
+// 0-255
+typedef struct Color { float r, g, b, a; } Color;
+bool color_is_valid(Color c);
+
+typedef enum ImageFormat { IMAGE_FORMAT_ALPHA, IMAGE_FORMAT_RGB } ImageFormat;
+uint8_t get_pixel_data_size(ImageFormat format);
+
+typedef struct Image { uint8_t *data; size_t width, height; ImageFormat format; } Image;
+Image image_create(size_t width, size_t height, ImageFormat format);
+/**
+ * Create image pointing to data. Does not make a copy.
+ */
+Image image_create_from_data(uint8_t *data, size_t width, size_t height, ImageFormat format) __nonnull((1));
+void image_destroy(Image *img) __nonnull((1));
+/**
+ * Draw tinted src at dest.
+ * If src is IMAGE_FORMAT_ALPHA, applies tint at opacity of src pixel
+ * if dest is IMAGE_FORMAT_ALPHA, tint is converted to average gray of r,g,b channels.
+ * Not yet supported:
+ * - from IMAGE_FORMAT_ALPHA to IMAGE_FORMAT_RGB
+ * - Scaling. dest_rect and src_rect must have same dimensions
+ */
+void image_draw_tint(Image dest, Image src, Rectangle dest_rect, Rectangle src_rect, Color tint);
+
+/**
+ * Fill a rect in dest with color. If dest is IMAGE_FORMAT_ALPHA, applies average of color's r,g,b channels.
+ */
+void image_draw_rect(Image dest, Rectangle rect, Color color);
+
+/**
+ * Create a new image of w x h and draw image in it at x, y. Fill new background with color.
+ */
+Image image_resize(Image image, int_least32_t w, int_least32_t h, int_least32_t x, int_least32_t y, Color color); 
+
+/**
+ * Creates a copy of src at dest.
+ * Callers responsibility to free dest.data before this!
+ * If dest points to src, does nothing.
+ */
+void image_copy(Image *dest, Image src) __nonnull((1));
+
 // TEXTURE ATLAS
 
 typedef struct TextureRect {
@@ -175,19 +227,6 @@ typedef struct IntVec2 {
     int x;
     int y;
 } IntVec2;
-
-// IMAGE
-typedef struct Rectangle { int_least32_t x, y, width, height; } Rectangle;
-void rect_fit_box(Rectangle box, Rectangle *fit, Rectangle *linked_fit) __nonnull((2));
-
-typedef enum ImageFormat { IMAGE_FORMAT_ALPHA, IMAGE_FORMAT_RGB } ImageFormat;
-typedef struct Image { uint8_t *data; size_t width, height; ImageFormat format; } Image;
-typedef struct Color { float r, g, b, a; } Color;
-
-uint8_t get_pixel_data_size(ImageFormat format);
-void image_draw(Image dest, Image src, Rectangle dest_rect, Rectangle src_rect, Color tint);
-void image_draw_rect(Image dest, Rectangle rect, Color color);
-void image_resize(Image *image, int_least32_t new_w, int_least32_t new_h, int_least32_t offset_x, int_least32_t offset_y, Color color);
 
 sb_declare(IntVec2);
 
