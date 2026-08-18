@@ -111,14 +111,9 @@ TextureAtlas texture_atlas_create(int max_size) {
         .size = min(DEFAULT_TEXTURE_ATLAS_SIZE, max_size),
         .max_size = max_size,
         .skyline_anchors = sb_create(IntVec2, DEFAULT_SKYLINE_ANCHOR_CAP),
-        .image = (Image) {
-            .data = calloc(1, texture_atlas.size * texture_atlas.size),
-            .width = texture_atlas.size,
-            .height = texture_atlas.size,
-            .format = IMAGE_FORMAT_ALPHA
-        }
+        .image = image_create(texture_atlas.size, texture_atlas.size, IMAGE_FORMAT_ALPHA)
     };
-    ensure(texture_atlas.image.data != NULL);
+    image_draw_rect(texture_atlas.image, (Rectangle) {0, 0, texture_atlas.size, texture_atlas.size}, (Color) {0, 0, 0, 255});
     sb_append(&texture_atlas.skyline_anchors, (IntVec2) {0, 0});
     sb_append(&texture_atlas.skyline_anchors, (IntVec2) {texture_atlas.size, 0}); // sentinel
     RmError error = rectmap_create(256, &texture_atlas.rects);

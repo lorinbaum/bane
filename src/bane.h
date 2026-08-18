@@ -356,21 +356,29 @@ typedef struct Cursor {
 typedef struct Style {
     FT_Face face;
     uint_least32_t font_size, line_height;
-    // NOTE: text_selected_color is near-useless until blending is added and selection draws behind text.
     Color text_color, text_selected_color, cursor_color, selection_color;
 } Style;
 
-typedef struct Context {
+typedef struct FrameBuffer {
+    uint8_t *data; // may be larger than screen, to avoid frequent reallocations
+    // width, height tracked instead of flat size because it scales along with sdl texture, which can't be reshaped
+    size_t max_width, max_height;
+    Image image; // target to draw to framebuffer. links to FrameBuffer.data
+    SDL_Texture *texture;
+} FrameBuffer;
+
+typedef struct RenderContext {
     FT_Library library;
     FT_Face face;
     int_least32_t line_height, baseline_offset; // each in px
     Color text_color, text_selected_color, cursor_color, selection_color;
     TextureAtlas atlas;
-} Context;
+    FrameBuffer fb;
+} RenderContext;
 
-Context *ctx_create();
-void ctx_load_style(Context *ctx, Style style);
-void ctx_destroy(Context *ctx);
+void renderctx_create(RenderContext *ctx) __nonnull((1));
+void renderctx_load_style(RenderContext *ctx, Style style) __nonnull((1));
+void renderctx_destroy(RenderContext *ctx) __nonnull((1));
 
 typedef struct TextBox {
     int_least32_t x, y, w, h;
@@ -382,18 +390,18 @@ typedef struct TextBox {
 TextBox textbox_create(int_least32_t x, int_least32_t y, int_least32_t w, int_least32_t h, const char* text);
 bool tb_hit(TextBox box, int_least32_t x, int_least32_t y);
 
-void tb_draw(TextBox *box, Context *ctx) __nonnull((1,2));
+void tb_draw(TextBox *box, RenderContext *ctx) __nonnull((1,2));
 
 void tb_right(TextBox *box, bool selecting) __nonnull((1));
 void tb_right_n(TextBox *box, size_t n, bool selecting) __nonnull((1));
 void tb_left(TextBox *box, bool selecting) __nonnull((1));
-void tb_down(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_up(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_home(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_end(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_mouse(TextBox *box, Context *ctx, int_least32_t x, int_least32_t y, bool selecting) __nonnull((1, 2));
-void tb_page_up(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_page_down(TextBox *box, Context *ctx, bool selecting)  __nonnull((1, 2));
+void tb_down(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_up(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_home(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_end(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_mouse(TextBox *box, RenderContext *ctx, int_least32_t x, int_least32_t y, bool selecting) __nonnull((1, 2));
+void tb_page_up(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_page_down(TextBox *box, RenderContext *ctx, bool selecting)  __nonnull((1, 2));
 void tb_next_word(TextBox *box, bool selecting) __nonnull((1));
 void tb_prev_word(TextBox *box, bool selecting) __nonnull((1));
 
@@ -408,6 +416,13 @@ void tb_cut(TextBox *box) __nonnull((1));
 
 void tb_select_all(TextBox *box) __nonnull((1));
 
-extern Image framebuffer;
+typedef struct State {
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    TextBox *last_hit;
+    RenderContext ctx;
+    TextBox textbox;
+    bool draw;
+} State;
 
 #endif
