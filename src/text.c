@@ -154,19 +154,23 @@ static bool sel_deactivated(Cursor *cursor, bool selecting) {
     }
 }
 
-// CONTEXT
+// RENDER CONTEXT
 
-Context *ctx_create() {
-    Context *ctx = calloc(1, sizeof(Context));
-    ensure(ctx != NULL);
+void renderctx_create(RenderContext *ctx) {
+    // 960x540 helps reduce wasted memory at common resolutions if doubled upon resize
+    ctx->fb = (FrameBuffer) {.max_width = 960, .max_height = 540, .image.format = IMAGE_FORMAT_RGB};
+    ctx->fb.data = malloc(ctx->fb.max_width * ctx->fb.max_height * 3);
+    ensure(ctx->fb.data != NULL);
+    // image and texture added on resize, when real actual is known
+    // scale added after window creation / updated on resize
+
     ensure(!FT_Init_FreeType(&ctx->library));
     ensure(!FT_New_Memory_Face(ctx->library, (FT_Byte *) assets_FiraSans_Regular_ttf, assets_FiraSans_Regular_ttf_len, 0, &ctx->face));
     ctx->atlas = texture_atlas_create(4096);
-    return ctx;
 }
 
-void ctx_load_style(Context *ctx, Style style) {
-    ensure(!FT_Set_Char_Size(ctx->face, 0, style.font_size*64*SCALE, 72, 72 ));
+void renderctx_load_style(RenderContext *ctx, Style style, float scale) {
+    ensure(!FT_Set_Char_Size(ctx->face, 0, style.font_size*64*scale, 72, 72 ));
     // NOTE different to CSS behavior, where line-height is multiplier of font-size.
     // Here it is multiplier of computed baseline-to-baseline distance.
     // Deep dive CSS: font metrics, line-height and vertical-align: https://iamvdo.me/en/blog/css-font-metrics-line-height-and-vertical-align
@@ -180,11 +184,11 @@ void ctx_load_style(Context *ctx, Style style) {
     ctx->selection_color = style.selection_color;
 }
 
-void ctx_destroy(Context *ctx) {
+void renderctx_destroy(RenderContext *ctx) {
     texture_atlas_destroy(&ctx->atlas);
     FT_Done_Face(ctx->face);
     FT_Done_FreeType(ctx->library);
-    memset(ctx, 0, sizeof(Context));
+    memset(ctx, 0, sizeof(RenderContext));
 }
 
 // TEXTBOX
@@ -226,7 +230,7 @@ static void shape_text(GapBuffer gb, size_t offset, FT_Face face, int_least32_t 
     out->count = i;
 }
 
-static void first_line(TextBox box, Context *ctx, Line *out) {
+static void first_line(TextBox box, RenderContext *ctx, Line *out) {
     assert(ctx != NULL && out != NULL);
     out->y = box.y + ctx->baseline_offset;
     out->offset = 0;
@@ -236,7 +240,7 @@ static void first_line(TextBox box, Context *ctx, Line *out) {
 // populates out with line after in. Returns whether there is a line after in. If there isn't out is not modified!
 // NOTE: next_line is strongly assumed to successfully reach all valid positions in predictable system state.
 // So a pattern like "if (!next_line) abort()" is deemed acceptable
-static bool next_line(TextBox box, Context *ctx, Line *in, Line *out) {
+static bool next_line(TextBox box, RenderContext *ctx, Line *in, Line *out) {
     assert(ctx != NULL && in != NULL && out != NULL);
     size_t new_offset = in->offset + in->count;
     if (new_offset > gb_count(box.gb) || (new_offset == gb_count(box.gb) && in->end != END_LF)) return false; // no line after in
@@ -247,7 +251,7 @@ static bool next_line(TextBox box, Context *ctx, Line *in, Line *out) {
 }
 
 // Populates out with all attributes of Line covering (offset, pre_wrap) in the text
-static void shape_line(TextBox box, Context *ctx, size_t offset, bool pre_wrap, Line *out) {
+static void shape_line(TextBox box, RenderContext *ctx, size_t offset, bool pre_wrap, Line *out) {
     assert(ctx != NULL && out != NULL);
     assert(offset <= gb_count(box.gb));
     first_line(box, ctx, out);
@@ -264,7 +268,7 @@ static int_least32_t x_offset(Line line, size_t offset) {
     return sb_get(line.xs, idx);
 }
 
-static void draw_char(FT_Face face, TextureAtlas *atlas, uint32_t cp, int_least32_t x, int_least32_t y, Color color) {
+static void draw_char(FrameBuffer fb, Rectangle box, FT_Face face, TextureAtlas *atlas, uint32_t cp, int_least32_t x, int_least32_t y, Color color) {
     assert(atlas != NULL);
     if (cp == LF || cp == SPACE) return;
     FT_UInt glyph_index = FT_Get_Char_Index(face, cp);
@@ -275,21 +279,25 @@ static void draw_char(FT_Face face, TextureAtlas *atlas, uint32_t cp, int_least3
         FT_Error error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER);
         assert(!error);
         assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported
-        Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
-        ta_error = texture_atlas_add_get_rect(atlas, glyph_index, texture, slot->bitmap_left, slot->bitmap_top, &rect);
+        Image image = image_create_from_data(slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, IMAGE_FORMAT_ALPHA);
+        ta_error = texture_atlas_add_get_rect(atlas, glyph_index, image, slot->bitmap_left, slot->bitmap_top, &rect);
         assert(!ta_error);
-        // NOTE: No UnloadImage(image) because all it would do is free the freetype bitmap buffer. not intended.
     }
-    ta_error = texture_atlas_draw(atlas, glyph_index, x, y, color);
+    ta_error = texture_atlas_draw(fb.image, box, atlas, glyph_index, x, y, color);
     assert(!ta_error);
 }
 
-void tb_draw(TextBox *box, Context *ctx) {
-    // NOTE: No clipping is performed. Characters that show partly inside the box also render outside it. Wait for new GPU backend to fix efficiently
+static void sel_draw_rect(FrameBuffer fb, Rectangle text_box, Rectangle rect, Color color) {
+    rect_fit_box(text_box, &rect, NULL);
+    image_draw_rect(fb.image, rect, color);
+}
+
+void tb_draw(TextBox *box, RenderContext *ctx) {
     // characters aren't drawn one by one because it takes preprocessing the whole line to know where it wraps
     Line line = line_create();
     Cursor *c = &box->cursor;
     int_least32_t cx, cy;
+    Rectangle bounding_box = {box->x, box->y, box->w, box->h};
     shape_line(*box, ctx, c->loc.offset, c->loc.pre_wrap, &line);
     cx = box->x + x_offset(line, c->loc.offset);
     cy = line.y - ctx->baseline_offset;
@@ -307,45 +315,58 @@ void tb_draw(TextBox *box, Context *ctx) {
         if (locs_reversed(c->loc, c->sel_origin)) { start = c->sel_origin; end = c->loc;}
         else { start = c->loc; end = c->sel_origin; }
         do {
-            // draw text
-            for (size_t i = 0; i < line.count; i++) {
-                Color color = line.offset + i >= start.offset && line.offset + i < end.offset ? ctx->text_selected_color : ctx->text_color;
-                draw_char(ctx->face, &ctx->atlas, gb_get(box->gb, line.offset + i), box->x + sb_get(line.xs, i), line.y + box->scroll_y, color);
-            }
             // draw selection
             if (line_contains(line, start.offset, start.pre_wrap)) {
                 int_least32_t x = box->x + x_offset(line, start.offset), y = line.y - ctx->baseline_offset + box->scroll_y, w;
                 if (line_contains(line, end.offset, end.pre_wrap)) w = box->x + x_offset(line, end.offset) - x;
                 else w = box->x + sb_rget(line.xs, 1) - x + (line.end == END_LF ? 4 : 0);
-                DrawRectangle(x, y, w, ctx->line_height, ctx->selection_color);
+                sel_draw_rect(ctx->fb, bounding_box, (Rectangle) {x, y, w, ctx->line_height}, ctx->selection_color);
             } else if (line.offset + line.count > start.offset && line.offset <= end.offset) {
                 int_least32_t x = box->x, y = line.y - ctx->baseline_offset + box->scroll_y, w;
                 if (line_contains(line, end.offset, end.pre_wrap)) w = box->x + x_offset(line, end.offset) - x;
                 else w = sb_rget(line.xs, 1) + (line.end == END_LF ? 4 : 0);
-                DrawRectangle(x, y, w, ctx->line_height, ctx->selection_color);
+                sel_draw_rect(ctx->fb, bounding_box, (Rectangle) {x, y, w, ctx->line_height}, ctx->selection_color);
             }
-        } while (line.y + ctx->line_height + box->scroll_y < box->y + box->h && next_line(*box, ctx, &line, &line));
-    } else do for (size_t i = 0; i < line.count; i++) {
+            // draw text
+            int_least32_t y = line.y + box->scroll_y;
+            bool in_selection = false;
+            for (size_t i = 0; i < line.count; i++) {
+                bool before_end = line.offset + i < end.offset;
+                in_selection = in_selection ? before_end : line.offset + i >= start.offset && before_end;
+                Color color = in_selection ? ctx->text_selected_color : ctx->text_color;
+                int_least32_t x = box->x + sb_get(line.xs, i);
+                draw_char(ctx->fb, bounding_box, ctx->face, &ctx->atlas, gb_get(box->gb, line.offset + i), x, y, color);
+            }
+        } while (line.y + box->scroll_y < box->y + box->h && next_line(*box, ctx, &line, &line));
+    } else do {
         // draw only text
-        draw_char(ctx->face, &ctx->atlas, gb_get(box->gb, line.offset + i), box->x + sb_get(line.xs, i), line.y + box->scroll_y, ctx->text_color);
-    } while (line.y + ctx->line_height + box->scroll_y < box->y + box->h && next_line(*box, ctx, &line, &line));
+        int_least32_t y = line.y + box->scroll_y;
+        for (size_t i = 0; i < line.count; i++) {
+            int_least32_t x = box->x + sb_get(line.xs, i);
+            draw_char(ctx->fb, bounding_box, ctx->face, &ctx->atlas, gb_get(box->gb, line.offset + i), x, y, ctx->text_color);
+        }
+    } while (line.y + box->scroll_y < box->y + box->h && next_line(*box, ctx, &line, &line));
     line_destroy(line);
-    // draw cursor. Drawn at end to layer over text and selection while avoiding raylib's rshapes which wants camera and 3D Mode.
-    // Wait for WebGPU backend to fix.
+    // draw cursor. Drawn at end to layer over text and selection
     if (cy + box->scroll_y >= box->y && cy + box->scroll_y < box->y + box->h) {
-        DrawLineEx((Vector2) {cx, cy + box->scroll_y}, (Vector2) {cx, cy + ctx->line_height + box->scroll_y}, 1, ctx->cursor_color);
+        image_draw_rect(ctx->fb.image, (Rectangle) {cx, cy + box->scroll_y, 1, ctx->line_height}, ctx->cursor_color);
     }
 }
 
-void tb_right(TextBox *box, bool selecting) {
-    Cursor *c = &box->cursor;
-    if (sel_deactivated(c, selecting)) c->loc = sel_end(*c);
-    else {
-        if (c->loc.offset < gb_count(box->gb)) c->loc.offset++;
-        c->loc.pre_wrap = true;
-        c->update_sticky_x = true;
+void tb_right(TextBox *box, bool selecting) { tb_right_n(box, 1, selecting); }
+
+void tb_right_n(TextBox *box, size_t n, bool selecting) {
+    if (n > 0) {
+        Cursor *c = &box->cursor;
+        bool deselected = sel_deactivated(c, selecting);
+        if (deselected) c->loc = sel_end(*c);
+        if (!deselected || --n) {
+            c->loc.offset = min(gb_count(box->gb), c->loc.offset + n);
+            c->loc.pre_wrap = true;
+            c->update_sticky_x = true;
+        }
+        c->scroll_to = true;
     }
-    c->scroll_to = true;
 }
 
 void tb_left(TextBox *box, bool selecting) {
@@ -377,7 +398,7 @@ static void cursor_to_closest_x(TextBox *box, Line line, int_least32_t x) {
 }
 
 // to call by functions that use cursor->loc.sticky_x before using it. requires shaping lines, so only used when necessary
-static void update_sticky_x(TextBox *box, Context *ctx) {
+static void update_sticky_x(TextBox *box, RenderContext *ctx) {
     assert(box != NULL && ctx != NULL);
     Cursor *c = &box->cursor;
     if (c->update_sticky_x) {
@@ -389,7 +410,7 @@ static void update_sticky_x(TextBox *box, Context *ctx) {
     }
 }
 
-void tb_down(TextBox *box, Context *ctx, bool selecting) {
+void tb_down(TextBox *box, RenderContext *ctx, bool selecting) {
     Cursor *c = &box->cursor;
     if (sel_deactivated(c, selecting)) c->loc = sel_end(*c);
     if (c->loc.offset < gb_count(box->gb)) {
@@ -403,7 +424,7 @@ void tb_down(TextBox *box, Context *ctx, bool selecting) {
     c->scroll_to = true;
 }
 
-void tb_up(TextBox *box, Context *ctx, bool selecting) {
+void tb_up(TextBox *box, RenderContext *ctx, bool selecting) {
     Cursor *c = &box->cursor;
     if (sel_deactivated(c, selecting)) c->loc = sel_start(*c);
     if (c->loc.offset > 0) {
@@ -425,7 +446,7 @@ void tb_up(TextBox *box, Context *ctx, bool selecting) {
     c->scroll_to = true;
 }
 
-void tb_home(TextBox *box, Context *ctx, bool selecting) {
+void tb_home(TextBox *box, RenderContext *ctx, bool selecting) {
     Cursor *c = &box->cursor;
     if (sel_deactivated(c, selecting)) c->loc = sel_start(*c);
     if (c->loc.offset > 0) {
@@ -441,7 +462,7 @@ void tb_home(TextBox *box, Context *ctx, bool selecting) {
     c->scroll_to = true;
 }
 
-void tb_end(TextBox *box, Context *ctx, bool selecting) {
+void tb_end(TextBox *box, RenderContext *ctx, bool selecting) {
     Cursor *c = &box->cursor;
     if (sel_deactivated(c, selecting)) c->loc = sel_end(*c);
     if (c->loc.offset < gb_count(box->gb)) {
@@ -459,7 +480,7 @@ void tb_end(TextBox *box, Context *ctx, bool selecting) {
 }
 
 // set `out` to line that covers or is closest to y
-static void closest_line_y(TextBox box, Context *ctx, int_least32_t y, Line *out) {
+static void closest_line_y(TextBox box, RenderContext *ctx, int_least32_t y, Line *out) {
     assert(ctx != NULL && out != NULL);
     Line lines[2] = {line_create(), line_create()};
     uint_least8_t head = 0;
@@ -481,7 +502,7 @@ static void closest_line_y(TextBox box, Context *ctx, int_least32_t y, Line *out
     line_destroy(lines[1]);
 }
 
-void tb_mouse(TextBox *box, Context *ctx, int_least32_t x, int_least32_t y, bool selecting) {
+void tb_mouse(TextBox *box, RenderContext *ctx, int_least32_t x, int_least32_t y, bool selecting) {
     sel_deactivated(&box->cursor, selecting);
     Line line = line_create();
     closest_line_y(*box, ctx, y - box->scroll_y, &line);
@@ -491,7 +512,7 @@ void tb_mouse(TextBox *box, Context *ctx, int_least32_t x, int_least32_t y, bool
     line_destroy(line);
 }
 
-void tb_page_up(TextBox *box, Context *ctx, bool selecting) {
+void tb_page_up(TextBox *box, RenderContext *ctx, bool selecting) {
     Cursor *c = &box->cursor;
     if (sel_deactivated(c, selecting)) c->loc = sel_start(*c);
     Line line = line_create();
@@ -512,7 +533,7 @@ void tb_page_up(TextBox *box, Context *ctx, bool selecting) {
     c->scroll_to = true;
 }
 
-void tb_page_down(TextBox *box, Context *ctx, bool selecting) {
+void tb_page_down(TextBox *box, RenderContext *ctx, bool selecting) {
     Cursor *c = &box->cursor;
     if (sel_deactivated(c, selecting)) c->loc = sel_end(*c);
     Line line = line_create();
@@ -578,10 +599,12 @@ static void sel_delete(GapBuffer *gb, Cursor *cursor) {
     cursor->sel_active = false;
 }
 
-void tb_write(TextBox *box, uint32_t c) {
+void tb_write(TextBox *box, uint32_t c) { tb_write_n(box, &c, 1); }
+
+void tb_write_n(TextBox *box, uint32_t *c, size_t n) {
     if (box->cursor.sel_active) sel_delete(&box->gb, &box->cursor);
-    gb_insert(&box->gb, box->cursor.loc.offset, c);
-    tb_right(box, false);
+    gb_insert_n(&box->gb, box->cursor.loc.offset, c, n);
+    tb_right_n(box, n, false);
 }
 
 void tb_backspace(TextBox *box) {
@@ -607,7 +630,7 @@ void tb_copy(TextBox box) {
     if (box.cursor.sel_active) {
         size_t offset = sel_start(box.cursor).offset, length = sel_end(box.cursor).offset - offset;
         char *text = gb_encode(box.gb, offset, length);
-        SetClipboardText(text);
+        if (!SDL_SetClipboardText(text)) SDL_Log("Unable to set clipboard string: %s", SDL_GetError());
         free(text);
     }
 }
@@ -615,19 +638,22 @@ void tb_copy(TextBox box) {
 void tb_paste(TextBox *box) {
     Cursor *c = &box->cursor;
     if (c->sel_active) sel_delete(&box->gb, c);
-    const char *text = GetClipboardText();
-    size_t len, str_len = strlen(text);
-    Utf8Error error = utf8_measure_codepoints(text, str_len, &len, NULL);
-    ensure(!error);
-    uint32_t *codepoints = malloc(sizeof(uint32_t) * len);
-    error = utf8_decode(text, str_len, true, len, codepoints, NULL);
-    ensure(!error);
-    gb_insert_n(&box->gb, c->loc.offset, codepoints, len);
-    free(codepoints);
-    c->loc.offset += len;
-    c->scroll_to = true;
-    c->loc.pre_wrap = true;
-    c->update_sticky_x = true;
+    char *text = SDL_GetClipboardText();
+    if (text) {
+        size_t len, str_len = strlen(text);
+        Utf8Error error = utf8_measure_codepoints(text, str_len, &len, NULL);
+        ensure(!error);
+        uint32_t *codepoints = malloc(sizeof(uint32_t) * len);
+        error = utf8_decode(text, str_len, true, len, codepoints, NULL);
+        ensure(!error);
+        gb_insert_n(&box->gb, c->loc.offset, codepoints, len);
+        free(codepoints);
+        c->loc.offset += len;
+        c->scroll_to = true;
+        c->loc.pre_wrap = true;
+        c->update_sticky_x = true;
+    }
+    SDL_free(text);
 }
 
 void tb_cut(TextBox *box) {

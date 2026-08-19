@@ -1,6 +1,6 @@
 add_executable(test_texture_atlas test_texture_atlas.c)
 target_include_directories(test_texture_atlas PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_texture_atlas PRIVATE raylib core)
+target_link_libraries(test_texture_atlas PRIVATE core)
 target_compile_definitions(test_texture_atlas PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(texture_atlas test_texture_atlas)
 
@@ -8,3 +8,8 @@ add_executable(test_utf8 test_utf8.c)
 target_include_directories(test_utf8 PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_utf8 PRIVATE core)
 add_test(utf8 test_utf8)
+
+add_executable(test_image test_image.c)
+target_include_directories(test_image PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_image PRIVATE core)
+add_test(image test_image)

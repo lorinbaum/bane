@@ -3,9 +3,11 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include "raylib.h"
 #include <assert.h>
 #include <string.h>
+#include <stdbool.h>
+#define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
+#include "SDL3/SDL.h"
 
 // Indirection required to use __COUNTER__ and similar as argument.
 // Inspiration from linux kernel include/linux/minmax.h
@@ -13,7 +15,16 @@
 #define __JOIN(a, b) ___JOIN(a, b)
 #define __UNIQUE __JOIN(_unique_, __COUNTER__)
 
-// STRETCHY BUFFERS
+// HELPERS
+
+typedef struct Rectangle { int_least32_t x, y, width, height; } Rectangle;
+/**
+ * Transform fit to fit box.
+ * if linked_fit is not NULL, transformations applied to fit also apply to linked_fit, but linked_fit isn't evaluated to fit box
+ */
+void rect_fit_box(Rectangle box, Rectangle *fit, Rectangle *linked_fit) __nonnull((2));
+
+// stretchy buffers
 
 #define sb_declare(type) typedef struct { type *items; size_t count, cap; } __JOIN(sb_, type)
 
@@ -140,6 +151,49 @@
 void ensure_fail(const char *file, int line, const char *func, const char *expr) __nonnull((1,3,4));
 #define ensure(expr) ((expr) ? (void) (0) : ensure_fail(__FILE__, __LINE__, __func__, #expr))
 
+// IMAGE
+
+// 0-255
+typedef struct Color { float r, g, b, a; } Color;
+bool color_is_valid(Color c);
+
+typedef enum ImageFormat { IMAGE_FORMAT_ALPHA, IMAGE_FORMAT_RGB } ImageFormat;
+uint8_t get_pixel_data_size(ImageFormat format);
+
+typedef struct Image { uint8_t *data; size_t width, height; ImageFormat format; } Image;
+Image image_create(size_t width, size_t height, ImageFormat format);
+/**
+ * Create image pointing to data. Does not make a copy.
+ */
+Image image_create_from_data(uint8_t *data, size_t width, size_t height, ImageFormat format) __nonnull((1));
+void image_destroy(Image *img) __nonnull((1));
+/**
+ * Draw tinted src at dest.
+ * If src is IMAGE_FORMAT_ALPHA, applies tint at opacity of src pixel
+ * if dest is IMAGE_FORMAT_ALPHA, tint is converted to average gray of r,g,b channels.
+ * Not yet supported:
+ * - from IMAGE_FORMAT_ALPHA to IMAGE_FORMAT_RGB
+ * - Scaling. dest_rect and src_rect must have same dimensions
+ */
+void image_draw_tint(Image dest, Image src, Rectangle dest_rect, Rectangle src_rect, Color tint);
+
+/**
+ * Fill a rect in dest with color. If dest is IMAGE_FORMAT_ALPHA, applies average of color's r,g,b channels.
+ */
+void image_draw_rect(Image dest, Rectangle rect, Color color);
+
+/**
+ * Create a new image of w x h and draw image in it at x, y. Fill new background with color.
+ */
+Image image_resize(Image image, int_least32_t w, int_least32_t h, int_least32_t x, int_least32_t y, Color color); 
+
+/**
+ * Creates a copy of src at dest.
+ * Callers responsibility to free dest.data before this!
+ * If dest points to src, does nothing.
+ */
+void image_copy(Image *dest, Image src) __nonnull((1));
+
 // TEXTURE ATLAS
 
 typedef struct TextureRect {
@@ -177,13 +231,11 @@ typedef struct IntVec2 {
 sb_declare(IntVec2);
 
 typedef struct TextureAtlas {
-    int channels;
-    int size; // texture area is square of side length "size".
-    int max_size; // hardware constrained.
+    size_t size; // texture area is square of side length "size".
+    size_t max_size; // hardware constrained.
     sb_IntVec2 skyline_anchors;
     RectMap rects;
     Image image; // Holds texture on CPU.
-    Texture2D texture; // raylib texture on GPU. Used for drawing.
     bool image_changed;
 } TextureAtlas;
 
@@ -197,8 +249,7 @@ void texture_atlas_destroy(TextureAtlas *texture_atlas) __nonnull((1));
 TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect) __nonnull((1,6));
 TaError texture_atlas_get_rect(TextureAtlas texture_atlas, uint32_t key, TextureRect *return_rect) __nonnull((3));
 
-void texture_atlas_update_texture(TextureAtlas *texture_atlas) __nonnull((1));
-TaError texture_atlas_draw(TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) __nonnull((1));
+TaError texture_atlas_draw(Image dest, Rectangle text_rect, TextureAtlas *texture_atlas, uint32_t key, int x, int y, Color tint) __nonnull((3));
 
 // UTF8
 
@@ -265,8 +316,6 @@ Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_le
 
 // TEXT
 
-#define SCALE 1.25 // HACK: known scaling on testing machine
-
 #define LF 0xA // \n
 #define SPACE 0x20
 
@@ -305,21 +354,29 @@ typedef struct Cursor {
 typedef struct Style {
     FT_Face face;
     uint_least32_t font_size, line_height;
-    // NOTE: text_selected_color is near-useless until blending is added and selection draws behind text.
     Color text_color, text_selected_color, cursor_color, selection_color;
 } Style;
 
-typedef struct Context {
+typedef struct FrameBuffer {
+    uint8_t *data; // may be larger than screen, to avoid frequent reallocations
+    // width, height tracked instead of flat size because it scales along with sdl texture, which can't be reshaped
+    size_t max_width, max_height;
+    Image image; // target to draw to framebuffer. links to FrameBuffer.data
+    SDL_Texture *texture;
+} FrameBuffer;
+
+typedef struct RenderContext {
     FT_Library library;
     FT_Face face;
     int_least32_t line_height, baseline_offset; // each in px
     Color text_color, text_selected_color, cursor_color, selection_color;
     TextureAtlas atlas;
-} Context;
+    FrameBuffer fb;
+} RenderContext;
 
-Context *ctx_create();
-void ctx_load_style(Context *ctx, Style style);
-void ctx_destroy(Context *ctx);
+void renderctx_create(RenderContext *ctx) __nonnull((1));
+void renderctx_load_style(RenderContext *ctx, Style style, float scale) __nonnull((1));
+void renderctx_destroy(RenderContext *ctx) __nonnull((1));
 
 typedef struct TextBox {
     int_least32_t x, y, w, h;
@@ -331,21 +388,23 @@ typedef struct TextBox {
 TextBox textbox_create(int_least32_t x, int_least32_t y, int_least32_t w, int_least32_t h, const char* text);
 bool tb_hit(TextBox box, int_least32_t x, int_least32_t y);
 
-void tb_draw(TextBox *box, Context *ctx) __nonnull((1,2));
+void tb_draw(TextBox *box, RenderContext *ctx) __nonnull((1,2));
 
-void tb_right(TextBox *box, bool selecting);
+void tb_right(TextBox *box, bool selecting) __nonnull((1));
+void tb_right_n(TextBox *box, size_t n, bool selecting) __nonnull((1));
 void tb_left(TextBox *box, bool selecting) __nonnull((1));
-void tb_down(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_up(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_home(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_end(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_mouse(TextBox *box, Context *ctx, int_least32_t x, int_least32_t y, bool selecting) __nonnull((1, 2));
-void tb_page_up(TextBox *box, Context *ctx, bool selecting) __nonnull((1, 2));
-void tb_page_down(TextBox *box, Context *ctx, bool selecting)  __nonnull((1, 2));
+void tb_down(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_up(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_home(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_end(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_mouse(TextBox *box, RenderContext *ctx, int_least32_t x, int_least32_t y, bool selecting) __nonnull((1, 2));
+void tb_page_up(TextBox *box, RenderContext *ctx, bool selecting) __nonnull((1, 2));
+void tb_page_down(TextBox *box, RenderContext *ctx, bool selecting)  __nonnull((1, 2));
 void tb_next_word(TextBox *box, bool selecting) __nonnull((1));
 void tb_prev_word(TextBox *box, bool selecting) __nonnull((1));
 
 void tb_write(TextBox *box, uint32_t c) __nonnull((1));
+void tb_write_n(TextBox *box, uint32_t *c, size_t n) __nonnull((1, 2));
 void tb_backspace(TextBox *box) __nonnull((1));
 void tb_delete(TextBox *box) __nonnull((1));
 
@@ -354,5 +413,16 @@ void tb_paste(TextBox *box) __nonnull((1));
 void tb_cut(TextBox *box) __nonnull((1));
 
 void tb_select_all(TextBox *box) __nonnull((1));
+
+typedef struct State {
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    TextBox *last_hit;
+    RenderContext ctx;
+    TextBox textbox;
+    Style style;
+    float scale;
+    bool draw;
+} State;
 
 #endif
