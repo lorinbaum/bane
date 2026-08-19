@@ -161,15 +161,16 @@ void renderctx_create(RenderContext *ctx) {
     ctx->fb = (FrameBuffer) {.max_width = 960, .max_height = 540, .image.format = IMAGE_FORMAT_RGB};
     ctx->fb.data = malloc(ctx->fb.max_width * ctx->fb.max_height * 3);
     ensure(ctx->fb.data != NULL);
-    // image and txture created upon resize, when real actual is known
+    // image and texture added on resize, when real actual is known
+    // scale added after window creation / updated on resize
 
     ensure(!FT_Init_FreeType(&ctx->library));
     ensure(!FT_New_Memory_Face(ctx->library, (FT_Byte *) assets_FiraSans_Regular_ttf, assets_FiraSans_Regular_ttf_len, 0, &ctx->face));
     ctx->atlas = texture_atlas_create(4096);
 }
 
-void renderctx_load_style(RenderContext *ctx, Style style) {
-    ensure(!FT_Set_Char_Size(ctx->face, 0, style.font_size*64*SCALE, 72, 72 ));
+void renderctx_load_style(RenderContext *ctx, Style style, float scale) {
+    ensure(!FT_Set_Char_Size(ctx->face, 0, style.font_size*64*scale, 72, 72 ));
     // NOTE different to CSS behavior, where line-height is multiplier of font-size.
     // Here it is multiplier of computed baseline-to-baseline distance.
     // Deep dive CSS: font metrics, line-height and vertical-align: https://iamvdo.me/en/blog/css-font-metrics-line-height-and-vertical-align

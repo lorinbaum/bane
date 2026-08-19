@@ -15,17 +15,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     ensure(state != NULL);
     *appstate = state;
 
-    Style style = {
-        .font_size = 20,
-        .cursor_color = {0xff, 0xff, 0xff, 0xff},
-        .line_height = 1,
-        .selection_color = {0xe3, 0x88, 0x64, 0xff},
-        .text_color = {0xe3, 0x88, 0x64, 0xff},
-        .text_selected_color = {0xff, 0xff, 0xff, 0xff}
-    };
-    renderctx_create(&state->ctx);
-    renderctx_load_style(&state->ctx, style);
-
     state->last_hit = NULL;
     char *text = u8"assert(slot->bitmap.pitch == (int) slot->bitmap.width); // padding currently not supported\n"
         "Image texture = {(void *) slot->bitmap.buffer, slot->bitmap.width, slot->bitmap.rows, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};\n"
@@ -45,6 +34,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+
+    state->style = (Style) {
+        .font_size = 20,
+        .cursor_color = {0xff, 0xff, 0xff, 0xff},
+        .line_height = 1,
+        .selection_color = {0xe3, 0x88, 0x64, 0xff},
+        .text_color = {0xe3, 0x88, 0x64, 0xff},
+        .text_selected_color = {0xff, 0xff, 0xff, 0xff}
+    };
+    state->scale = SDL_GetWindowDisplayScale(state->window);
+    renderctx_create(&state->ctx);
+    renderctx_load_style(&state->ctx, state->style, state->scale);
 
     if (!SDL_StartTextInput(state->window)) {
         SDL_Log("Couldn't start text input: %s", SDL_GetError());
@@ -106,7 +107,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         }
         case SDL_EVENT_MOUSE_BUTTON_DOWN: {
             if (event->button.button == SDL_BUTTON_LEFT) {
-                int_least32_t x = (int_least32_t) (event->button.x * SCALE + 0.5), y = (int_least32_t) (event->button.y * SCALE + 0.5);
+                int_least32_t x = (int_least32_t) (event->button.x * state->scale + 0.5);
+                int_least32_t y = (int_least32_t) (event->button.y * state->scale + 0.5);
                 if (tb_hit(state->textbox, x, y)) {
                     state->last_hit = &state->textbox;
                     tb_mouse(&state->textbox, &state->ctx, x, y, is_selecting(event->key.mod));
@@ -117,13 +119,15 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         }
         case SDL_EVENT_MOUSE_MOTION: {
             if (event->motion.state & SDL_BUTTON_LMASK) {
-                int_least32_t x = (int_least32_t) (event->motion.x * SCALE + 0.5), y = (int_least32_t) (event->motion.y * SCALE + 0.5);
+                int_least32_t x = (int_least32_t) (event->motion.x * state->scale + 0.5);
+                int_least32_t y = (int_least32_t) (event->motion.y * state->scale + 0.5);
                 if (state->last_hit == &state->textbox) { tb_mouse(&state->textbox, &state->ctx, x, y, true); state->draw = true; }
             }
             break;
         }
         case SDL_EVENT_MOUSE_WHEEL: {
-            int_least32_t x = (int_least32_t) (event->wheel.mouse_x * SCALE + 0.5), y = (int_least32_t) (event->wheel.mouse_y * SCALE + 0.5);
+            int_least32_t x = (int_least32_t) (event->wheel.mouse_x * state->scale + 0.5);
+            int_least32_t y = (int_least32_t) (event->wheel.mouse_y * state->scale + 0.5);
             if (tb_hit(state->textbox, x, y)) {
                 int_least32_t scroll = event->wheel.integer_x * fb->image.height / 10;
                 state->textbox.scroll_y = min(0, state->textbox.scroll_y + (event->wheel.direction == SDL_MOUSEWHEEL_NORMAL ? scroll : -scroll));
@@ -137,6 +141,12 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
             if (!SDL_GetRenderOutputSize(state->renderer, (int *) &w, (int *) &h)) {
                 SDL_Log("Couldn't GetRenderOutputSize: %s", SDL_GetError());
                 return SDL_APP_FAILURE;
+            }
+
+            float scale = SDL_GetWindowDisplayScale(state->window);
+            if (scale != state->scale) {
+                state->scale = scale;
+                renderctx_load_style(&state->ctx, state->style, state->scale);
             }
 
             bool resize = false;

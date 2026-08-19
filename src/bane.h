@@ -316,8 +316,6 @@ Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_le
 
 // TEXT
 
-#define SCALE 1.25 // HACK: known scaling on testing machine
-
 #define LF 0xA // \n
 #define SPACE 0x20
 
@@ -377,7 +375,7 @@ typedef struct RenderContext {
 } RenderContext;
 
 void renderctx_create(RenderContext *ctx) __nonnull((1));
-void renderctx_load_style(RenderContext *ctx, Style style) __nonnull((1));
+void renderctx_load_style(RenderContext *ctx, Style style, float scale) __nonnull((1));
 void renderctx_destroy(RenderContext *ctx) __nonnull((1));
 
 typedef struct TextBox {
@@ -422,6 +420,8 @@ typedef struct State {
     TextBox *last_hit;
     RenderContext ctx;
     TextBox textbox;
+    Style style;
+    float scale;
     bool draw;
 } State;
 
