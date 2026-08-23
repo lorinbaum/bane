@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <math.h>
-#include "ft2build.h"
-#include FT_FREETYPE_H
+#define STB_TRUETYPE_IMPLEMENTATION
 #include "bane.h"
 
 #include <SDL3/SDL_main.h>

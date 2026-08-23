@@ -1,4 +1,5 @@
 #include "bane.h"
+#include <stdio.h>
 
 #define LEN(x) (sizeof(x) / sizeof *(x))
 

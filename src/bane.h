@@ -319,8 +319,7 @@ Utf8Error utf8_measure_codepoints(const char *str, size_t in_len, size_t *out_le
 #define LF 0xA // \n
 #define SPACE 0x20
 
-#include "ft2build.h"
-#include FT_FREETYPE_H
+#include "ttf.c"
 
 typedef struct GapBuffer {
     size_t cap, gap, offset;
@@ -352,7 +351,6 @@ typedef struct Cursor {
 } Cursor;
 
 typedef struct Style {
-    FT_Face face;
     uint_least32_t font_size, line_height;
     Color text_color, text_selected_color, cursor_color, selection_color;
 } Style;
@@ -366,8 +364,8 @@ typedef struct FrameBuffer {
 } FrameBuffer;
 
 typedef struct RenderContext {
-    FT_Library library;
-    FT_Face face;
+    stbtt_fontinfo font;
+    float font_scale;
     int_least32_t line_height, baseline_offset; // each in px
     Color text_color, text_selected_color, cursor_color, selection_color;
     TextureAtlas atlas;

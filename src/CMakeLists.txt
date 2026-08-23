@@ -4,10 +4,11 @@ add_library(core
     utf8.c
     text.c
     image.c
+    ttf.c
 )
 
 target_include_directories(core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(core PUBLIC freetype SDL3 m)
+target_link_libraries(core PUBLIC SDL3 m)
 
 add_executable(${PROJECT_NAME} main.c )
 target_link_libraries(${PROJECT_NAME} PRIVATE core)
