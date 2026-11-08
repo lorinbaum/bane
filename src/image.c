@@ -29,12 +29,12 @@ void image_destroy(Image *img) {
 
 void image_draw(Image dest, Image src, int_least32_t x, int_least32_t y) {
     Rectangle rect = {x, y, src.width, src.height};
-    rect_fit_box((Rectangle) {0, 0, min(src.width, dest.width), min(src.height, dest.height)}, &rect, NULL);
+    rect_fit_box((Rectangle) {0, 0, dest.width, dest.height}, &rect, NULL);
     assert(dest.format == src.format);
     uint8_t px_bytes = get_pixel_data_size(src.format);
-    uint8_t row_bytes_dest = dest.width * px_bytes;
-    uint8_t row_bytes_src = src.width * px_bytes;
-    uint8_t row_bytes_rect = rect.width * px_bytes;
+    size_t row_bytes_dest = dest.width * px_bytes;
+    size_t row_bytes_src = src.width * px_bytes;
+    size_t row_bytes_rect = rect.width * px_bytes;
     uint8_t *dest_p = dest.data + (rect.y * dest.width + rect.x) * px_bytes;
     uint8_t *src_p = src.data;
     for (int_least32_t row = 0; row < rect.height; row++, dest_p += row_bytes_dest, src_p += row_bytes_src) memmove(dest_p, src_p, row_bytes_rect);
@@ -76,7 +76,7 @@ void image_draw_tint(Image dest, Image src, Rectangle dest_rect, Rectangle src_r
         float tint_norm[3] = {tint.r / 255.0f, tint.g / 255.0f, tint.b / 255.0f};
         for (int_least32_t y = 0; y < rect_height; y++, src_p += next_row_bytes_src, dest_p += next_row_bytes_dest) {
             for (int_least32_t x = 0; x < rect_width; x++, src_p += px_bytes_src, dest_p += px_bytes_dest) {
-                for (uint c = 0; c < px_bytes_dest; c++) dest_p[c] = blend_value(dest_p[c], src_p[c] * tint_norm[c], alpha) + .5;
+                for (uint8_t c = 0; c < px_bytes_dest; c++) dest_p[c] = blend_value(dest_p[c], src_p[c] * tint_norm[c], alpha) + .5;
             }
         }
     } else {
@@ -87,7 +87,7 @@ void image_draw_tint(Image dest, Image src, Rectangle dest_rect, Rectangle src_r
         for (int_least32_t y = 0; y < rect_height; y++, src_p += next_row_bytes_src, dest_p += next_row_bytes_dest) {
             for (int_least32_t x = 0; x < rect_width; x++, src_p += px_bytes_src, dest_p += px_bytes_dest) {
                 float blend_alpha = alpha * *src_p / 255.0f;
-                for (uint c = 0; c < px_bytes_dest; c++) dest_p[c] = blend_value(dest_p[c], tint_c[c], blend_alpha) + .5;
+                for (uint8_t c = 0; c < px_bytes_dest; c++) dest_p[c] = blend_value(dest_p[c], tint_c[c], blend_alpha) + .5;
             }
         }
     }
@@ -120,6 +120,7 @@ Image image_resize(Image image, int_least32_t w, int_least32_t h, int_least32_t 
     image_draw_rect(resized, (Rectangle) {x + image.width, 0, resized.width - (x + image.width), resized.height}, color);
     image_draw_rect(resized, (Rectangle) {x, 0, image.width, y}, color);
     image_draw_rect(resized, (Rectangle) {x, y + image.height, image.width, resized.height - (y + image.height)}, color);
+    // NOTE: Beware of using image_draw_tint: the part of resized where image will go is uninitialized memory and may blend with image
     image_draw(resized, image, x, y);
     return resized;
 }
