@@ -194,6 +194,9 @@ Image image_resize(Image image, int_least32_t w, int_least32_t h, int_least32_t 
  */
 void image_copy(Image *dest, Image src) __nonnull((1));
 
+void image_write_png(Image img, const char *path) __nonnull((2));
+char *image_write_string(Image img);
+
 // TEXTURE ATLAS
 
 typedef struct TextureRect {

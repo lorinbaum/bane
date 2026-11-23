@@ -3,39 +3,9 @@
 
 #define LEN(x) (sizeof(x) / sizeof *(x))
 
-static char *image_print(Image img) {
-    uint8_t px_bytes = get_pixel_data_size(img.format);
-    size_t len = 
-        (
-            img.width * px_bytes * 4 // 3 digits + 1 space per pixel
-            + (img.width - 1) * 3 // 3 spaces between pixels
-            + 1 // \n
-        ) 
-        * img.height
-        + 1; // '\0'
-    char *ret = malloc(len * sizeof(char));
-    ensure(ret != NULL);
-    size_t written = 0;
-    for (size_t y = 0; y < img.height; y++) {
-        for (size_t x = 0; x < img.width; x++) {
-            for (uint8_t c = 0; c < px_bytes; c++, written += 4) {
-                sprintf(ret + written, "%3u ", img.data[(y * img.width + x) * px_bytes + c]);
-            }
-            if (x + 1 < img.width) {
-                sprintf(ret + written, "    ");
-                written += 3;
-            } 
-        }
-        sprintf(ret + written, "\n");
-        written++;
-    }
-    ret[len - 1] = '\0';
-    return ret;
-}
-
 static void print_unequal(char *test_name, char *case_description, Image dest, uint8_t *expected_data, size_t idx) {
-    char *expected = image_print(image_create_from_data(expected_data, dest.width, dest.height, dest.format));
-    char *got = image_print(dest);
+    char *expected = image_write_string(image_create_from_data(expected_data, dest.width, dest.height, dest.format));
+    char *got = image_write_string(dest);
     size_t row_size = dest.width * get_pixel_data_size(dest.format);
     size_t x = idx % row_size, y = idx / row_size;
     printf("Image draw bounds test %s (%s) failed at x=%lu, y=%lu:\nExpected:\n%s\nGot:\n%s\n", test_name, case_description, x, y, expected, got);
