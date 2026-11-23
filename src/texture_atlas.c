@@ -180,7 +180,6 @@ static TaError texture_atlas_resize(size_t *size, size_t max_size, sb_IntVec2 *a
     return TA_OK;
 }
 
-
 TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Image image, int origin_x, int origin_y, TextureRect *return_rect) {
     /* Uses Skyline packing algorithm
     Assuming coordinate origin in top left corner and Y increasing downwards:
@@ -213,7 +212,7 @@ TaError texture_atlas_add_get_rect(TextureAtlas *texture_atlas, uint32_t key, Im
                     rect = (TextureRect) {key, best.x, best.y, image.width, image.height, origin_x, origin_y};
                     rectmap_put(&texture_atlas->rects, rect);
                     update_anchors(anchors, best, image.width, image.height);
-                    if (old_size < texture_atlas->size) { 
+                    if (old_size < texture_atlas->size) {
                         Image resized = image_resize(texture_atlas->image, texture_atlas->size, texture_atlas->size, 0, 0, (Color) {0, 0, 0, 255});
                         image_destroy(&texture_atlas->image);
                         texture_atlas->image = resized;

@@ -163,14 +163,15 @@ void renderctx_create(RenderContext *ctx) {
     ensure(ctx->fb.data != NULL);
     // image and texture added on resize, when real actual is known
     // scale added after window creation / updated on resize
-    ensure(stbtt_InitFont(&ctx->font, assets_FiraSans_Regular_ttf, 0));
+    ctx->font = font_load(assets_FiraSans_Regular_ttf, 0);
+    ensure(ctx->font != NULL);
     ctx->atlas = texture_atlas_create(4096);
 }
 
 void renderctx_load_style(RenderContext *ctx, Style style, float scale) {
-    ctx->font_scale = stbtt_ScaleForMappingEmToPixels(&ctx->font, style.font_size * scale);
+    ctx->font_scale = font_scale(ctx->font, style.font_size * scale, 96); // TODO determine and use actual ppi
     int ascent, descent, gap;
-    stbtt_GetFontVMetrics(&ctx->font, &ascent, &descent, &gap);
+    font_vmetrics(ctx->font, &ascent, &descent, &gap);
     // NOTE different to CSS behavior, where line-height is multiplier of font-size.
     // Here it is multiplier of computed baseline-to-baseline distance.
     // Deep dive CSS: font metrics, line-height and vertical-align: https://iamvdo.me/en/blog/css-font-metrics-line-height-and-vertical-align
@@ -183,6 +184,7 @@ void renderctx_load_style(RenderContext *ctx, Style style, float scale) {
 }
 
 void renderctx_destroy(RenderContext *ctx) {
+    font_destroy(ctx->font);
     texture_atlas_destroy(&ctx->atlas);
     memset(ctx, 0, sizeof(RenderContext));
 }
@@ -196,7 +198,7 @@ TextBox textbox_create(int_least32_t x, int_least32_t y, int_least32_t w, int_le
 bool tb_hit(TextBox box, int_least32_t x, int_least32_t y) { return x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h; }
 
 // Shapes exactly one line worth of text. Only populates out's .xs, .count .end
-static void shape_text(GapBuffer gb, size_t offset, stbtt_fontinfo *font, float font_scale, int_least32_t w, Line *out) {
+static void shape_text(GapBuffer gb, size_t offset, fontinfo *font, float font_scale, int_least32_t w, Line *out) {
     assert(out != NULL);
     out->xs.count = 0;
     sb_append(&out->xs, 0);
@@ -211,7 +213,8 @@ static void shape_text(GapBuffer gb, size_t offset, stbtt_fontinfo *font, float 
             return;
         }
         int advance;
-        stbtt_GetCodepointHMetrics(font, cp, &advance, NULL); // bearing is accounted for when drawing the char
+        int glyph_index = font_glyph_index(font, cp);
+        font_hmetrics(font, glyph_index, &advance, NULL); // TODO bearing is NOT accounted for when drawing the char ANYMORE
         pen_x += advance * font_scale;
         int_least32_t rounded_pen_x = pen_x + .5; // round to nearest pixel
         if (rounded_pen_x > w) {
@@ -230,7 +233,7 @@ static void first_line(TextBox box, RenderContext *ctx, Line *out) {
     assert(ctx != NULL && out != NULL);
     out->y = box.y + ctx->baseline_offset;
     out->offset = 0;
-    shape_text(box.gb, 0, &ctx->font, ctx->font_scale, box.w, out);
+    shape_text(box.gb, 0, ctx->font, ctx->font_scale, box.w, out);
 }
 
 // populates out with line after in. Returns whether there is a line after in. If there isn't out is not modified!
@@ -242,7 +245,7 @@ static bool next_line(TextBox box, RenderContext *ctx, Line *in, Line *out) {
     if (new_offset > gb_count(box.gb) || (new_offset == gb_count(box.gb) && in->end != END_LF)) return false; // no line after in
     out->y = in->y + ctx->line_height;
     out->offset = new_offset;
-    shape_text(box.gb, out->offset, &ctx->font, ctx->font_scale, box.w, out);
+    shape_text(box.gb, out->offset, ctx->font, ctx->font_scale, box.w, out);
     return true;
 }
 
@@ -264,17 +267,18 @@ static int_least32_t x_offset(Line line, size_t offset) {
     return sb_get(line.xs, idx);
 }
 
-static void draw_char(FrameBuffer fb, Rectangle box, stbtt_fontinfo *font, float font_scale, TextureAtlas *atlas, uint32_t cp, int_least32_t x, int_least32_t y, Color color) {
+static void draw_char(FrameBuffer fb, Rectangle box, fontinfo *font, float font_scale, TextureAtlas *atlas, uint32_t cp, int_least32_t x, int_least32_t y, Color color) {
     assert(atlas != NULL);
     if (cp == LF || cp == SPACE) return;
-    int glyph_index = stbtt_FindGlyphIndex(font, cp);
+    int glyph_index = font_glyph_index(font, cp);
     TextureRect rect;
     TaError ta_error = texture_atlas_get_rect(*atlas, glyph_index, &rect);
     if (ta_error == TA_RECT_NOT_FOUND) {
-        int xoff, yoff, width, height;
-        uint8_t *data = (uint8_t*) stbtt_GetGlyphBitmap(font, font_scale, font_scale, glyph_index, &width, &height, &xoff, &yoff);
+        float yoff;
+        int width, height;
+        uint8_t *data = (uint8_t*) font_bitmap(font, font_scale, font_scale, 0, 0, glyph_index, 1, &width, &height, &yoff);
         Image image = image_create_from_data(data, width, height, IMAGE_FORMAT_ALPHA);
-        ta_error = texture_atlas_add_get_rect(atlas, glyph_index, image, xoff, -yoff, &rect);
+        ta_error = texture_atlas_add_get_rect(atlas, glyph_index, image, 0, yoff, &rect); // xoff is fixed 0
         assert(!ta_error);
         free(data);
     }
@@ -330,7 +334,7 @@ void tb_draw(TextBox *box, RenderContext *ctx) {
                 in_selection = in_selection ? before_end : line.offset + i >= start.offset && before_end;
                 Color color = in_selection ? ctx->text_selected_color : ctx->text_color;
                 int_least32_t x = box->x + sb_get(line.xs, i);
-                draw_char(ctx->fb, bounding_box, &ctx->font, ctx->font_scale, &ctx->atlas, gb_get(box->gb, line.offset + i), x, y, color);
+                draw_char(ctx->fb, bounding_box, ctx->font, ctx->font_scale, &ctx->atlas, gb_get(box->gb, line.offset + i), x, y, color);
             }
         } while (line.y + box->scroll_y < box->y + box->h && next_line(*box, ctx, &line, &line));
     } else do {
@@ -338,7 +342,7 @@ void tb_draw(TextBox *box, RenderContext *ctx) {
         int_least32_t y = line.y + box->scroll_y;
         for (size_t i = 0; i < line.count; i++) {
             int_least32_t x = box->x + sb_get(line.xs, i);
-            draw_char(ctx->fb, bounding_box, &ctx->font, ctx->font_scale, &ctx->atlas, gb_get(box->gb, line.offset + i), x, y, ctx->text_color);
+            draw_char(ctx->fb, bounding_box, ctx->font, ctx->font_scale, &ctx->atlas, gb_get(box->gb, line.offset + i), x, y, ctx->text_color);
         }
     } while (line.y + box->scroll_y < box->y + box->h && next_line(*box, ctx, &line, &line));
     line_destroy(line);
